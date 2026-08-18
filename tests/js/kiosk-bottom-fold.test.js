@@ -1,17 +1,19 @@
 'use strict';
-// The kiosk's bottom-row accordion: TRAFFIC and SAT stack on a small panel and
-// exactly one is open, the other reporting from a one-line strip.
+// The kiosk's bottom-row accordion: on a small panel exactly ONE of TRAFFIC and
+// SAT is on screen, and the folded one is reported by a pill inside the surviving
+// card's header. One header, not two — a separate collapsed strip cost a row of
+// chrome plus a row gap to say what fits in a pill.
 //
 // Everything worth breaking here is invisible from the JS alone:
 //
 //   * the fold must apply ONLY below 1100px. Above it the two lists sit side by
 //     side with room to spare, and a rule that leaked out of the media query
 //     would fold a 1920x1200 wall display that never asked to be folded.
-//   * collapsing must hide the DOM and NOT stop the data. The strip reports
-//     from the same render pass the list does, so a render skipped "to save
-//     work" leaves the strip printing a number that stopped being true.
-//   * the strip must name an active filter. The chips that explain the count
-//     fold away with the list.
+//   * folding must hide the DOM and NOT stop the data. The pill reports from
+//     the same render pass the list does, so a render skipped "to save work"
+//     leaves the pill printing a number that stopped being true.
+//   * the pill must name an active filter. The chips that explain the count go
+//     off screen with the list.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -37,12 +39,20 @@ function smallScreenBlock() {
 // the raw block finds the warning and calls it the violation.
 function decomment(css) { return css.replace(/\/\*[\s\S]*?\*\//g, ''); }
 
-// A card's markup, from its opening div to the next card / row end.
-function strip(id) {
+// A fold pill's markup, from its own opening tag to the end of its subtree.
+function pill(id) {
   const at = page.indexOf('id="' + id + '"');
-  assert.notStrictEqual(at, -1, 'no ' + id + ' strip');
-  const open = page.lastIndexOf('<div', at);
-  return page.slice(open, page.indexOf('</div>', at) + 6);
+  assert.notStrictEqual(at, -1, 'no ' + id + ' pill');
+  const open = page.lastIndexOf('<span', at);
+  return page.slice(open, page.indexOf('</span></span>', at) + 14);
+}
+
+// The header of a card, by its class.
+function header(cardClass) {
+  const card = page.indexOf('<div class="card ' + cardClass + '">');
+  assert.notStrictEqual(card, -1, 'no ' + cardClass + ' card');
+  const hd = page.indexOf('<div class="hd"', card);
+  return page.slice(hd, page.indexOf('</div>\n', hd));
 }
 
 test('the fold applies only below 1100px', () => {
@@ -61,15 +71,35 @@ test('the fold applies only below 1100px', () => {
     (total - inside) + ' [data-open] rule(s) escaped the 1100px query');
 });
 
-test('the strip is invisible until the query shows it', () => {
-  assert.match(page, /\.foldstrip\{ display:none;/,
-    'the collapsed face must default to display:none, or it doubles every card ' +
-    'header on the panel that is not folded');
+test('the pill is invisible until the query shows it', () => {
+  assert.match(page, /\.foldpill\{ display:none;/,
+    'the pill must default to display:none, or the 1920 panel grows a control ' +
+    'for folding that never folds anything');
 });
 
-test('both strips are real buttons that open their own card', () => {
+test('there is ONE header on a folded panel, not a header plus a strip', () => {
+  const small = smallScreenBlock();
+  // The folded card leaves the screen outright. Anything short of display:none
+  // (a zero-height strip, a hidden child list) still costs its border and the
+  // row gap, which is the row this design exists to give back.
+  assert.match(small, /\.row\.bot\[data-open="traffic"\] \.sats,\s*\n\s*\.row\.bot\[data-open="sat"\] \.traffic\{ display:none; \}/,
+    'the folded card must be display:none — a collapsed-but-present card gives ' +
+    'back the row the pill just saved');
+  assert.ok(!/foldstrip/.test(page), 'the old collapsed strip is still here');
+});
+
+test('each pill lives in the OTHER list\'s header', () => {
+  // The SAT pill has to be in the traffic header and vice versa: a pill inside
+  // the card it describes goes off screen exactly when it is needed.
+  assert.ok(header('traffic').includes('id="fold-sat"'),
+    'the SAT pill must sit in the traffic header');
+  assert.ok(header('sats').includes('id="fold-traffic"'),
+    'the TRAFFIC pill must sit in the satellites header');
+});
+
+test('both pills are real buttons that open the card they name', () => {
   for (const [id, which] of [['fold-traffic', 'traffic'], ['fold-sat', 'sat']]) {
-    const el = strip(id);
+    const el = pill(id);
     assert.match(el, new RegExp('onclick="foldOpen\\(\'' + which + '\'\\)"'),
       id + ' does not open ' + which);
     assert.match(el, /role="button"/, id + ' is not announced as a button');
@@ -89,14 +119,14 @@ test('the row remembers which card was open', () => {
     'anything that is not an explicit "sat" must fall back to traffic');
 });
 
-test('collapsing does not stop the data: both strips are written by the render pass', () => {
+test('folding does not stop the data: both pills are written by the render pass', () => {
   // Traffic: between the count it shares and the rows it draws.
   const count = page.indexOf("getElementById('k-aprs-count')");
   const rows = page.indexOf('renderAprsRows(list.slice(', count);
   assert.ok(count !== -1 && rows > count, 'applyAprsFilter no longer looks the same');
   const between = page.slice(count, rows);
   assert.match(between, /foldHead\('traffic'/,
-    'the traffic strip is not updated by the render that counts the rows — it ' +
+    'the traffic pill is not updated by the render that counts the rows — it ' +
     'will report a stale number the moment the list is folded');
 
   // Satellites: from the same sorted `items` the cards are built from.
@@ -104,30 +134,38 @@ test('collapsing does not stop the data: both strips are written by the render p
   const body = page.indexOf('body.innerHTML = items.map', meta);
   assert.ok(meta !== -1 && body > meta, 'renderSats no longer looks the same');
   assert.match(page.slice(meta, body), /foldHead\('sat'/,
-    'the sat strip is not updated where the passes are');
+    'the sat pill is not updated where the passes are');
   assert.match(page, /const it0 = items\[0\];/,
     'the headline must come from the sorted list, not a second computation');
 });
 
-test('the strip says WHICH filter produced the count', () => {
+test('the pill says WHICH filter produced the count', () => {
   const count = page.indexOf("getElementById('k-aprs-count')");
   const block = page.slice(count, page.indexOf('renderAprsRows(list.slice(', count));
   assert.match(block, /_ageMin !== _AGE_STEPS\[0\]/,
-    'a non-default age window must be named — the chip that says so is folded away');
+    'a non-default age window must be named — the chip that says so goes off screen');
   assert.match(block, /srcSelected\.length/,
     'an active source narrowing must be named for the same reason');
   assert.match(block, /_SRC_LABEL\[k\]/,
-    'the strip must use the chips\' own labels, not a second set of names');
+    'the pill must use the chips\' own labels, not a second set of names');
 });
 
-test('an overhead bird still colours the strip', () => {
+test('an overhead bird still colours the pill', () => {
   assert.match(page, /it0\.inPass \? 'now' : \(it0\.mins <= 10 \? 'soon' : ''\)/,
     'folding the sat card must not hide that a pass is happening');
+  assert.match(page, /\.foldpill \.fs-head\.now\{ color:var\(--accent\); \}/);
+  assert.match(page, /\.foldpill \.fs-head\.soon\{ color:var\(--warn\); \}/);
+});
+
+test('a lone bird fills the width instead of sitting in half of it', () => {
   const small = smallScreenBlock();
-  assert.match(page, /\.foldstrip \.fs-head\.now\{ color:var\(--accent\); \}/);
-  assert.match(page, /\.foldstrip \.fs-head\.soon\{ color:var\(--warn\); \}/);
-  assert.ok(small.includes('grid-template-columns:1fr 1fr'),
-    'the open sat card should spend its new width on a second column');
+  // auto-fit, not `1fr 1fr`. A fixed pair of tracks leaves ONE pass in the left
+  // half of a 769px card with nothing beside it — which is what "the list is not
+  // using the width" looks like. auto-fit collapses the empty track.
+  assert.match(small, /grid-template-columns:repeat\(auto-fit, minmax\(20rem, 1fr\)\)/,
+    'the sat grid must auto-fit, or a single bird occupies half the pane');
+  assert.ok(!/grid-template-columns:1fr 1fr/.test(small),
+    'a fixed two-track grid cannot collapse its empty column');
 });
 
 test('the fold costs no frames and no fonts', () => {
@@ -138,10 +176,10 @@ test('the fold costs no frames and no fonts', () => {
     'no animation in the fold: this panel cannot afford it');
   // Pi OS Lite ships no emoji font. The caret is drawn with borders precisely so
   // no glyph can turn into tofu.
-  assert.match(page, /\.foldstrip \.fs-car\{[^}]*border-left:/,
+  assert.match(page, /\.foldpill \.fp-car\{[^}]*border-left:/,
     'the caret must be drawn, not typed');
   for (const id of ['fold-traffic', 'fold-sat']) {
-    const bad = [...strip(id)].filter(c => c.codePointAt(0) >= 0x1F000);
+    const bad = [...pill(id)].filter(c => c.codePointAt(0) >= 0x1F000);
     assert.deepStrictEqual(bad, [], id + ' carries a glyph the panel cannot render');
   }
 });

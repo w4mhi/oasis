@@ -366,6 +366,11 @@
        Chromium renderer at 60fps for its duration, on a Pi that is already
        painting a map. */
     .row.bot{ flex-direction:column; }
+    /* The sat header gains a pill; traffic's already wraps. Without this the
+       pill is the item that gets clipped off the right edge, and the control
+       that swaps panes is the one thing on this row that must never be the
+       casualty. */
+    .sats .hd{ flex-wrap:wrap; row-gap:.4rem; }
     .sats{ width:auto; }                    /* the +100px was a 1920 measurement */
     /* Load-bearing. A flex item defaults to min-height:auto, which in a COLUMN
        means the open card cannot shrink below its own content: the list would
@@ -374,27 +379,29 @@
        never came up, because the row bounded the cards' height for free. */
     .row.bot .card{ min-height:0; }
 
-    /* the collapsed card: its own children hidden, its strip shown, no padding
-       of its own (the strip carries it) */
+    /* The folded card leaves the screen entirely — no strip, no border, no row
+       gap. Its headline is carried by the pill in the surviving header, and its
+       DOM keeps rendering behind display:none so that pill cannot go stale. */
     .row.bot[data-open="traffic"] .sats,
-    .row.bot[data-open="sat"] .traffic{ flex:0 0 auto; padding:0; }
-    .row.bot[data-open="traffic"] .sats > .hd,
-    .row.bot[data-open="traffic"] .sats > .satscroll,
-    .row.bot[data-open="sat"] .traffic > .hd,
-    .row.bot[data-open="sat"] .traffic > .tbl{ display:none; }
-    .row.bot[data-open="traffic"] .sats > .foldstrip,
-    .row.bot[data-open="sat"] .traffic > .foldstrip{ display:flex; }
+    .row.bot[data-open="sat"] .traffic{ display:none; }
 
-    /* the open card takes everything left */
+    /* the open card takes the whole row, and its pill appears in its header */
     .row.bot[data-open="traffic"] .traffic,
     .row.bot[data-open="sat"] .sats{ flex:1 1 auto; }
+    .row.bot[data-open="traffic"] .traffic .foldpill,
+    .row.bot[data-open="sat"] .sats .foldpill{ display:inline-flex; }
 
-    /* Two birds abreast. The open sat card is ~769px now instead of 464, and a
-       .sat block needs ~230px — so the width buys a COLUMN rather than nothing.
-       align-content:start keeps a lone bird at the top instead of centring it
-       in a half-empty grid. */
-    .row.bot[data-open="sat"] .satscroll{ display:grid; grid-template-columns:1fr 1fr;
-                                          gap:0 .5rem; align-content:start; }
+    /* Two birds abreast — but auto-fit, not a fixed 1fr 1fr. With a fixed pair
+       of tracks a LONE bird sits in the left half of a 769px card with nothing
+       beside it, which is the shape that reads as "this list is not using the
+       width". auto-fit collapses the empty track and the single card stretches.
+       20rem is the floor a .sat block needs before its l1 line (name · AOS ·
+       countdown) starts colliding.
+       align-content:start keeps a short list at the top instead of floating it
+       in the middle of the pane. */
+    .row.bot[data-open="sat"] .satscroll{
+      display:grid; grid-template-columns:repeat(auto-fit, minmax(20rem, 1fr));
+      gap:0 .5rem; align-content:start; }
   }
 
   /* ── SDR service bar — dot + label per RTL consumer, side to side ─────── */
@@ -411,31 +418,40 @@
   /* ── BOTTOM lists: traffic + satellites cards — copied verbatim from kiosk.css ── */
   .row{ display:flex; gap:.8rem; min-height:0; }
   .row.bot{ flex:1 1 auto; min-height:0; }
-  /* ── bottom-row accordion: the COLLAPSED face of a card ─────────────────
+  /* ── bottom-row accordion: the folded card, as a pill ───────────────────
+     The folded card is not on screen at all — it is the OPEN card's header that
+     carries it, as one pill at the far right. That is worth a row: a separate
+     collapsed strip cost a line of chrome plus the row gap (~36px at 800x480,
+     about a row and a half of traffic) to say what fits in a pill the header
+     already had room for.
      display:none here and shown ONLY inside the 1100px query below, so the
      1920x1200 panel — which has room for both lists side by side — never sees
-     this at all. The whole mechanism is one attribute on .row.bot; nothing
+     any of this. The whole mechanism is one attribute on .row.bot; nothing
      listens for a resize.
      The caret is drawn with borders rather than set in a glyph: Raspberry Pi OS
      ships no emoji font, and the triangles that look right in a browser here
      (U+25B6 and friends) are exactly the ones a font may hand to an emoji
      presentation and turn into tofu on the panel. A border triangle cannot. */
-  .foldstrip{ display:none; align-items:center; gap:.6rem; cursor:pointer;
-              padding:.55rem 1.2rem; font-size:1rem; letter-spacing:.06em;
-              user-select:none; -webkit-tap-highlight-color:transparent; }
-  .foldstrip .fs-car{ flex:0 0 auto; width:0; height:0;
-                      border-top:.34rem solid transparent;
-                      border-bottom:.34rem solid transparent;
-                      border-left:.52rem solid var(--dim); }
-  .foldstrip .fs-name{ flex:0 0 auto; font-weight:700; color:var(--text); }
-  /* The headline is the whole point of collapsing rather than hiding: it keeps
-     reporting while the list is folded away. It ellipsizes rather than wraps —
-     a strip that grows to two lines steals a row from the list that is open. */
-  .foldstrip .fs-head{ min-width:0; overflow:hidden; text-overflow:ellipsis;
-                       white-space:nowrap; color:var(--dim); }
-  .foldstrip .fs-head.soon{ color:var(--warn); }
-  .foldstrip .fs-head.now{ color:var(--accent); }
-  .foldstrip .fs-hint{ flex:0 0 auto; margin-left:auto; color:var(--faint); font-size:.9rem; }
+  .foldpill{ display:none; align-items:baseline; gap:.5rem; cursor:pointer;
+             margin-left:.6rem; padding:.25rem .7rem; border-radius:.5rem;
+             border:1px solid var(--border); background:var(--panel-2);
+             font-size:1rem; letter-spacing:.04em; white-space:nowrap;
+             user-select:none; -webkit-tap-highlight-color:transparent; }
+  /* Bordered box, not a 999px capsule: the traffic header's filter chips ARE
+     999px capsules, and a pane switch that looks like a fourth filter is a pane
+     switch nobody presses. */
+  .foldpill .fp-name{ flex:0 0 auto; font-weight:700; color:var(--text); }
+  /* The headline is the whole point of folding rather than hiding: it keeps
+     reporting while its list is off screen. It ellipsizes rather than wraps — a
+     header that grows to two lines gives back the row this pill just saved. */
+  .foldpill .fs-head{ min-width:0; max-width:15rem; overflow:hidden;
+                      text-overflow:ellipsis; white-space:nowrap; color:var(--dim); }
+  .foldpill .fs-head.soon{ color:var(--warn); }
+  .foldpill .fs-head.now{ color:var(--accent); }
+  .foldpill .fp-car{ flex:0 0 auto; align-self:center; width:0; height:0;
+                     border-top:.34rem solid transparent;
+                     border-bottom:.34rem solid transparent;
+                     border-left:.52rem solid var(--dim); }
   .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r);
          padding:1rem 1.2rem; min-width:0; display:flex; flex-direction:column; }
   .hd{ display:flex; align-items:center; gap:.8rem; margin-bottom:.6rem; }
@@ -971,18 +987,6 @@
   <div class="row bot" id="botrow" data-open="traffic">
 
     <div class="card traffic">
-      <!-- The collapsed face. Hidden outright above 1100px — see .foldstrip.
-           The strip is the ONLY toggle: exactly one card is open, so tapping the
-           other one's strip is what closes this one. The open card's header
-           carries live controls (filter chips, the mute button), and making it
-           double as a collapse target would put a fold on top of every one of
-           them. -->
-      <div class="foldstrip" id="fold-traffic" role="button" tabindex="0"
-           onclick="foldOpen('traffic')"
-           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}"
-           title="Show the traffic list"
-        ><span class="fs-car"></span><span class="fs-name">TRAFFIC</span
-        ><span class="fs-head" id="fold-traffic-head">—</span><span class="fs-hint">open</span></div>
       <div class="hd">
         <span class="livebadge ok" id="k-aprs-live"><span class="lvd">●</span><span class="lvtxt">LIVE</span></span>
         <span class="heard" id="k-aprs-count">—</span>
@@ -1006,6 +1010,19 @@
              visible drift. It answers the question a wall display always raises
              and a static list cannot — is this alive, or did it freeze? -->
         <span class="satcd" id="k-traffic-cd" title="Seconds until the traffic list may next redraw"></span>
+        <!-- The folded satellites card, as a pill. Hidden outright above 1100px
+             (see .foldpill) — on a panel with room for both cards there is
+             nothing folded to report. This is the ONLY toggle between the two
+             lists: exactly one is open, so tapping the other one's pill is what
+             closes this one. Nothing here doubles as a collapse target — this
+             header's other controls are filter chips, and a fold gesture laid
+             over them would fire on every filter tap. -->
+        <span class="foldpill" id="fold-sat" role="button" tabindex="0"
+              onclick="foldOpen('sat')"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('sat');}"
+              title="Show the satellite passes"
+          ><span class="fp-name">SAT</span><span class="fs-head" id="fold-sat-head">—</span
+          ><span class="fp-car"></span></span>
       </div>
       <div class="tbl">
         <div class="tscroll" id="aprsScroll"></div>
@@ -1013,16 +1030,10 @@
     </div>
 
     <div class="card sats">
-      <div class="foldstrip" id="fold-sat" role="button" tabindex="0"
-           onclick="foldOpen('sat')"
-           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('sat');}"
-           title="Show the satellite passes"
-        ><span class="fs-car"></span><span class="fs-name">SAT</span
-        ><span class="fs-head" id="fold-sat-head">—</span><span class="fs-hint">open</span></div>
       <!-- Same treatment as the traffic card's LIVE badge (green accent, 1rem,
            700, .1em tracking). Reusing that class rather than copying its values
            is deliberate: the two headers sit side by side, so any drift shows. -->
-      <div class="hd"><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span></div>
+      <div class="hd"><span class="livebadge ok" id="k-sat-title" onclick="openArmSheet()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openArmSheet();}" role="button" tabindex="0" title="Tap to choose which birds wake this screen">SATELLITES</span><button class="satmute" id="k-sat-mute" onclick="toggleSatMute()" title="Mute pass-alert chimes"></button><span class="satcd" id="k-sat-cd" title="Seconds until the pass list is refetched"></span><span class="meta" id="k-sat-meta" title="Monitored birds, and how many have a pass in the next hour">—</span><span class="foldpill" id="fold-traffic" role="button" tabindex="0" onclick="foldOpen('traffic')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();foldOpen('traffic');}" title="Show the traffic list"><span class="fp-name">TRAFFIC</span><span class="fs-head" id="fold-traffic-head">—</span><span class="fp-car"></span></span></div>
       <div class="satscroll" id="satBody"><div class="satempty">…</div></div>
     </div>
 
@@ -2076,10 +2087,10 @@ function applyAprsFilter() {
   const total = list.length;
   list.sort((a,b) => _lhEpoch(b.last_heard||b.timestamp||b.time) - _lhEpoch(a.last_heard||a.timestamp||a.time));
   const cEl = document.getElementById('k-aprs-count'); if (cEl) cEl.textContent = total;
-  // The collapsed strip. It names any ACTIVE FILTER, because the chips that
-  // explain the count are folded away with the list: "12 heard" under a 15m
-  // window and an IS-only narrowing reads as a dead station otherwise, and the
-  // operator has no chip on screen to tell them why.
+  // The pill in the satellites header. It names any ACTIVE FILTER, because the
+  // chips that explain the count go off screen with the list: "12 heard" under a
+  // 15m window and an IS-only narrowing reads as a dead station otherwise, and
+  // the operator has no chip in front of them to tell them why.
   const bits = [total + ' heard'];
   if (_ageMin !== _AGE_STEPS[0]) bits.push(_ageMin ? '\u2264' + _AGE_LABEL[_ageMin] : _AGE_LABEL[0]);
   if (srcSelected.length) bits.push(srcSelected.map(k => _SRC_LABEL[k] || k).join('+') + ' only');
@@ -3010,8 +3021,8 @@ function renderSats() {
   // "moni", not "monitored": the header now carries a mute button too, and the
   // full word pushed the count off the edge of the 7" panel.
   if (meta) meta.textContent = _satSel.length + ' moni · ' + items.length + ' in 1h';
-  // The collapsed strip, from the SAME sorted list the cards are built from —
-  // items[0] is the in-pass bird if there is one, else the next to rise.
+  // The pill in the traffic header, from the SAME sorted list the cards are
+  // built from — items[0] is the in-pass bird if there is one, else the next up.
   if (!items.length) {
     foldHead('sat', 'no passes in 1h', '');
   } else {
@@ -3061,11 +3072,11 @@ function renderSats() {
 // why there is no breakpoint test here and no resize listener. One place decides
 // what "small" means, and it is a media query.
 //
-// COLLAPSING HIDES THE DOM. IT MUST NEVER STOP THE DATA. Both cards keep
-// polling and keep rendering while folded, because the strip reports from the
-// same render pass the list does; skipping the render to "save work on a Pi"
-// would leave the strip printing a number that stopped being true minutes ago,
-// which is worse than showing nothing.
+// FOLDING HIDES THE DOM. IT MUST NEVER STOP THE DATA. The folded card sits
+// behind display:none and keeps polling and rendering, because the pill in the
+// open header reports from the same render pass the list does; skipping the
+// render to "save work on a Pi" would leave the pill printing a number that
+// stopped being true minutes ago, which is worse than showing nothing.
 const FOLD_KEY = 'oasis_kiosk_bot_open';
 function foldOpen(which) {
   if (which !== 'traffic' && which !== 'sat') return;
@@ -3078,8 +3089,8 @@ function foldOpen(which) {
   try { saved = localStorage.getItem(FOLD_KEY); } catch (e) { /* private mode */ }
   foldOpen(saved === 'sat' ? 'sat' : 'traffic');   // traffic is the default view
 })();
-// tone: '' | 'soon' | 'now' — the strip wears the same urgency the open card
-// would, so folding a card cannot hide that a bird is overhead.
+// tone: '' | 'soon' | 'now' — the pill wears the same urgency the card itself
+// would, so folding it away cannot hide that a bird is overhead.
 function foldHead(which, text, tone) {
   const el = document.getElementById('fold-' + which + '-head');
   if (!el) return;
