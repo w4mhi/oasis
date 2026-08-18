@@ -18,6 +18,7 @@ import json
 import os
 import unittest
 
+from common import oasis_lib as OL
 from common import setup_engine as SE
 from common import setup_registry as SR
 
@@ -156,6 +157,43 @@ class SudoAptCmdCallers(unittest.TestCase):
         # A scan that silently matched nothing would pass forever.
         self.assertGreater(checked, 5,
                            f"only {checked} sudo_apt_cmd call sites found — did the scan break?")
+
+
+class SudoAptCmdLockTimeoutTest(unittest.TestCase):
+    """apt must WAIT for the dpkg lock, not fail on it.
+
+    apt-daily.timer runs on every Debian / Pi OS box. An nwr install landed two
+    seconds inside one of its windows, apt aborted on the held lock, and the
+    feature was recorded install_failed permanently. Thirteen files call
+    sudo_apt_cmd, so the guard belongs on the builder, not on one caller.
+    """
+
+    OPT = "DPkg::Lock::Timeout=300"
+
+    def test_apt_get_waits_for_the_lock(self):
+        argv = OL.sudo_apt_cmd("apt-get", "install", "-y", "multimon-ng")
+        self.assertIn(self.OPT, argv)
+        self.assertEqual(argv[argv.index(self.OPT) - 1], "-o")
+
+    def test_apt_waits_for_the_lock(self):
+        self.assertIn(self.OPT, OL.sudo_apt_cmd("apt", "update"))
+
+    def test_dpkg_gets_no_lock_timeout(self):
+        # `dpkg -i` has no such option and would reject it.
+        argv = OL.sudo_apt_cmd("dpkg", "-i", "/tmp/x.deb")
+        self.assertNotIn(self.OPT, argv)
+        self.assertNotIn("-o", argv)
+
+    def test_the_options_come_before_the_subcommand(self):
+        # apt only accepts -o before the subcommand's own arguments.
+        argv = OL.sudo_apt_cmd("apt-get", "install", "-y", "csdr")
+        self.assertLess(argv.index(self.OPT), argv.index("install"))
+
+    def test_the_conffile_policy_survives(self):
+        argv = OL.sudo_apt_cmd("apt-get", "install", "-y", "csdr")
+        self.assertIn("Dpkg::Options::=--force-confold", argv)
+        self.assertIn("Dpkg::Options::=--force-confdef", argv)
+        self.assertEqual(argv[:2], ["sudo", "DEBIAN_FRONTEND=noninteractive"])
 
 
 if __name__ == "__main__":

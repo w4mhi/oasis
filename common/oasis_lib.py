@@ -100,10 +100,32 @@ def sudo_apt_cmd(*args):
     — which then poisons EVERY later apt/dpkg operation on the box. So for apt /
     apt-get we also force the non-interactive conffile policy (keep the existing
     file: --force-confold, with --force-confdef for the rest).
+
+    We also make apt WAIT for the dpkg lock instead of failing on it. Every
+    Debian / Raspberry Pi OS box enables apt-daily.timer and
+    apt-daily-upgrade.timer, and either one holds the lock while our installer
+    is running. An nwr install on raspad landed two seconds inside an
+    apt-daily window, apt aborted instantly, and the feature was recorded
+    install_failed for good — a lottery every operator plays on every install.
+    DPkg::Lock::Timeout makes apt block for that many seconds waiting for the
+    lock; it exists since apt 2.0, and an apt too old to know the key ignores an
+    unrecognised -o rather than erroring, so there is no regression on an older
+    suite. Only apt/apt-get take it — `dpkg -i` has no such option.
+
+    300s is chosen against the two things that hold the lock. apt-daily only
+    downloads: the run we caught took 2 seconds. apt-daily-upgrade actually
+    installs, and on a Pi 3's SD card a backlog of upgrades is the case that
+    can run into minutes — five covers it. The trade is an install that shows
+    "installing..." for longer against a hard failure the operator has to
+    diagnose, and the wait is safe to take: the installer worker is
+    Type=oneshot with TimeoutStartUSec=infinity, so systemd cannot kill it
+    mid-wait. If the wait IS exceeded, apt exits on the lock exactly as it does
+    today — the fix degrades to the present behaviour, never worse.
     """
     if args and args[0] in ("apt", "apt-get"):
         conf = ["-o", "Dpkg::Options::=--force-confdef",
-                "-o", "Dpkg::Options::=--force-confold"]
+                "-o", "Dpkg::Options::=--force-confold",
+                "-o", "DPkg::Lock::Timeout=300"]
         return ["sudo", "DEBIAN_FRONTEND=noninteractive", args[0], *conf, *args[1:]]
     return ["sudo", "DEBIAN_FRONTEND=noninteractive", *args]
 
