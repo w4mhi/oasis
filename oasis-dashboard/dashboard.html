@@ -1323,8 +1323,14 @@ const SDR_SVCS = [
 // assigned service every 8 s, on a Pi 3.
 async function isUnitActive(unit) {
   if (!unit) return false;
+  // The body is read on EVERY path, ok or not: an unread fetch() body pins a
+  // 2 MiB /dev/shm data pipe until Chromium collects the Response, and on a
+  // kiosk that never navigates that cost ~500 MB/h once already. .catch() ->
+  // null covers the non-JSON body a 500 or a proxy returns; the parse is what
+  // drains the pipe, not whether it succeeded.
   try { const r = await fetch('/api/health/service?name='+unit+'&active_only=1', { cache:'no-store' });
-        return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
+        const d = await r.json().catch(() => null);
+        return r.ok && !!d && d.active === 'active'; } catch (_) { return false; }
 }
 // SAT has no systemd unit — its recorder is an ad-hoc subprocess. `active` is WE
 // hold the dongle; `blocked` is somebody ELSE does, which is the one case worth
@@ -1343,7 +1349,9 @@ async function svcState(svc) {
 let _hwServices = {};   // last /api/hardware/devices `services` map (device assignments)
 async function fetchSdrStatus() {
   let hw = {};
-  try { const r = await fetch('/api/hardware/devices', { cache:'no-store' }); if (r.ok) hw = await r.json(); } catch (_) {}
+  try { const r = await fetch('/api/hardware/devices', { cache:'no-store' });
+        const d = await r.json().catch(() => null);      // read on every path
+        if (r.ok && d) hw = d; } catch (_) {}
   const byId = {}; (hw.devices || []).forEach(x => byId[x.id] = x);
   const services = hw.services || {};
   _hwServices = services;   // shared with the wlrf (Winlink RF) health check
@@ -1773,7 +1781,8 @@ async function _kioskProbe(gate) {
   if (gate.unit) {
     try {
       const r = await fetch('/api/health/service?name='+gate.unit,{cache:'no-store'});
-      if (r.ok) { const d = await r.json();
+      const d = await r.json().catch(() => null);             // read on every path
+      if (r.ok && d) {
         if (gate.enabledOnly) return d.enabled==='enabled';   // gpsd: deliberate boot-enable only
         return d.active==='active' || d.enabled==='enabled'; }
     } catch(_) {}
@@ -1785,7 +1794,9 @@ async function _kioskProbe(gate) {
 }
 async function loadInstalled() {
   let features = null;
-  try { const r = await fetch('/api/installed-services',{cache:'no-store'}); if(r.ok){ const d=await r.json(); features=d.features; } } catch(_) {}
+  try { const r = await fetch('/api/installed-services',{cache:'no-store'});
+        const d = await r.json().catch(() => null);      // read on every path
+        if(r.ok && d){ features=d.features; } } catch(_) {}
   const hidden = await oasisResolveHidden(features, _kioskProbe);
   HIDDEN_SVCS.clear();
   hidden.forEach(id => HIDDEN_SVCS.add(id));

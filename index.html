@@ -1801,7 +1801,12 @@ const SVC_PORTS = {
 async function loadConfig() {
   try {
     const r = await fetch('/server-ports.json', { cache: 'no-store' });
-    if (r.ok) { const d = await r.json(); if (d.ports) Object.assign(PORTS, d.ports); }
+    // Read on EVERY path: an unread fetch() body pins a 2 MiB /dev/shm data
+    // pipe until Chromium collects the Response, which on a dashboard left open
+    // for days is a long time. The parse is what drains it, so a non-JSON error
+    // body is caught to null rather than left sitting there.
+    const d = await r.json().catch(() => null);
+    if (r.ok && d && d.ports) Object.assign(PORTS, d.ports);
   } catch (_) {}
 }
 
@@ -2803,7 +2808,8 @@ async function loadInstalled() {
   let features = null;
   try {
     const r = await fetch('/api/installed-services', { cache: 'no-store' });
-    if (r.ok) { const d = await r.json(); features = d.features; _locked = !!d.locked; }
+    const d = await r.json().catch(() => null);      // read on every path
+    if (r.ok && d) { features = d.features; _locked = !!d.locked; }
   } catch (_) {}
   if (_locked) _showHidden = false;              // locked build: never reveal hidden cards
   // Portable profile (run-portable.sh / run-portable.bat set OASIS_FEATURES →
