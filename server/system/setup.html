@@ -154,6 +154,7 @@
           <label class="setup-check"><input type="checkbox" data-feature="openwebrx"> openwebrx</label>
           <label class="setup-check"><input type="checkbox" data-feature="rtl-sdr-feed"> rtl-feed (APRS SDR &rarr; GrayWolf)</label>
           <label class="setup-check"><input type="checkbox" data-feature="adsb"> adsb</label>
+          <label class="setup-check"><input type="checkbox" data-feature="nwr"> nwr (NOAA Weather Radio + SAME decode)</label>
           <label class="setup-check"><input type="checkbox" data-feature="satellites"> satellites (+ TLE cache + pass-alert voice)</label>
           <label class="setup-check"><input type="checkbox" data-feature="speech"> speech (spoken announcements &mdash; Piper, voice "Jenny (Dioco)")</label>
         </div>
@@ -732,6 +733,7 @@ const HW_ASSIGN_SERVICES = [
   { service: 'adsb',       label: 'ADS-B',       kinds: ['rtl-sdr'] },
   { service: 'openwebrx',  label: 'OpenWebRX',   kinds: ['rtl-sdr'] },
   { service: 'aprs',       label: 'APRS Feed',   kinds: ['rtl-sdr'] },
+  { service: 'nwr',        label: 'Weather Radio', kinds: ['rtl-sdr'] },
   { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr', 'draws'] },
   { service: 'winlink',    label: 'Winlink RF',  kinds: ['digirig', 'dra-pi', 'draws'] },
 ];

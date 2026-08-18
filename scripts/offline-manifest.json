@@ -577,6 +577,16 @@
       ],
       "resolved": {}
     },
+    "nwr": {
+      "type": "apt",
+      "bundle_group": "nwr",
+      "description": "NOAA Weather Radio SAME/EAS decode. multimon-ng demodulates the SAME header out of a 162 MHz NBFM stream; the parser and its tables are vendored in-repo, so there is nothing to install on the Python side.",
+      "packages": {
+        "common": ["multimon-ng"]
+      },
+      "suites": ["bookworm", "trixie"],
+      "arches": ["arm64", "armhf"]
+    },
     "pmtiles": {
       "type": "github-release",
       "description": "Protomaps go-pmtiles CLI. Converts MBTiles -> PMTiles offline (used by maps/convert-mbtiles.py). Vendored into the bundle's maps/ directory. By default only the Linux binaries (the bundle's Pi/Linux targets) are fetched; macOS/Windows platforms are marked default=false and included only with create-oasis-offline.py --all-platforms so the default bundle stays lean.",

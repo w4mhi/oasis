@@ -350,7 +350,7 @@ def _setup_dashboard_install_fn(repo_root, payload):
 # caller is already root).
 PRIVILEGED_FEATURES = {
     "webssh", "service-controls", "ap-fallback", "graywolf", "winlink", "kiwix",
-    "openwebrx", "adsb", "satellites",
+    "openwebrx", "adsb", "satellites", "nwr",
     "rtl-sdr", "rtl-sdr-feed", "sdr-dsp", "gps", "gps-l76x", "dra-pi-rx-led", "rtc",
     "rtc-raspad", "rtc-pi5",
     "draws-gps", "draws-audio",
@@ -421,6 +421,11 @@ FEATURE_HELP = {
         "traffic map. Install if you want aircraft alongside APRS. It takes "
         "over the dongle, so starting it stops the APRS SDR feed and "
         "OpenWebRX.",
+    "nwr":
+        "NOAA Weather Radio with SAME/EAS decode. Listen to a 162 MHz weather "
+        "channel on an RTL-SDR and decode official National Weather Service "
+        "alerts - event code and counties - with no internet. Manual: you start "
+        "a listening session, so it shares the dongle rather than holding it.",
     "satellites":
         "Offline satellite pass prediction with a world map, roster, "
         "downlink frequencies, and pass alerts. Install if you work the "
@@ -614,6 +619,16 @@ def build_registry(repo_root, payload=None):
             dependencies=["server"],
             install_fn=lambda: _setup_run_script(repo_root, "services/adsb/install.py"),
             removal_record_fn=lambda: _removal_record(repo_root, "services.adsb.common.adsb"),
+            verify_fn=lambda: {"ok": True},
+            enable_policy="none",
+            privileged=True,
+        ),
+        "nwr": SE.FeatureSpec(
+            key="nwr",
+            dependencies=["server", "rtl-sdr"],
+            install_fn=lambda: _setup_run_script(repo_root, "services/nwr/install.py"),
+            removal_record_fn=lambda: _removal_record(repo_root,
+                                                      "services.nwr.common.nwr_install"),
             verify_fn=lambda: {"ok": True},
             enable_policy="none",
             privileged=True,
