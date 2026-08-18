@@ -45,10 +45,13 @@ function harness(status, opts) {
   const doc = fakeDoc();
   global.fetch = async (url, init) => {
     calls.push({ url, method: (init && init.method) || 'GET' });
+    // text() is part of the stub because the stop paths drain the body they do
+    // not want (an unread fetch() body pins a /dev/shm pipe) -- without it those
+    // calls would still "work", by way of a swallowed TypeError.
     if (String(url).includes('/listen/status')) {
-      return { ok: true, json: async () => status };
+      return { ok: true, json: async () => status, text: async () => '' };
     }
-    return { ok: true, json: async () => ({ ok: true }) };
+    return { ok: true, json: async () => ({ ok: true }), text: async () => '' };
   };
   global.localStorage = { getItem: () => null, setItem: () => {} };
   const root = { satdenoise: denoise, sattransport: transport, document: doc,

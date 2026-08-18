@@ -52,6 +52,12 @@
   }
 
   // ── Server calls ───────────────────────────────────────────────────────────
+  // Every call below reads the response body on EVERY path, ok or not. An unread
+  // fetch() body pins a 2 MiB /dev/shm data pipe until Chromium collects the
+  // Response, and on a form left open through an incident that is as good as
+  // forever -- the same leak that cost a kiosk ~500 MB/h once already. Reading is
+  // what drains the pipe, so the throw-on-failure paths drain first and throw
+  // after; whether the parse succeeded is beside the point.
   async function save(kind, filename, contentStr) {
     var res = await fetch('/api/forms/save', {
       method: 'POST',
@@ -77,13 +83,13 @@
   }
   async function load(kind, name) {
     var res = await fetch(_savedUrl(kind, name), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) { await res.text().catch(function () {}); throw new Error('HTTP ' + res.status); }
     return await res.json();
   }
   // Raw-text sibling of load(), for the CSV exports the JSON parser would choke on.
   async function loadText(kind, name) {
     var res = await fetch(_savedUrl(kind, name), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) { await res.text().catch(function () {}); throw new Error('HTTP ' + res.status); }
     return await res.text();
   }
   // Directory listing anywhere inside the OASIS tree. The endpoint is hard-scoped
@@ -98,7 +104,7 @@
   // Fetch any file inside the OASIS tree as text (server-side read, not a upload).
   async function readTree(path) {
     var res = await fetch('/' + String(path || '').replace(/^\/+/, ''), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) { await res.text().catch(function () {}); throw new Error('HTTP ' + res.status); }
     return await res.text();
   }
 

@@ -219,11 +219,16 @@
       await poll();
     }
 
+    // Nothing here wants what /stop answers, but the answer still has to be
+    // drunk: an unread fetch() body pins a 2 MiB /dev/shm data pipe until
+    // Chromium collects the Response, and the satellites page sits open across
+    // whole passes. Both stop paths below therefore read the body and drop it.
     async function stopCapture() {
       try {
-        await fetch('/api/satellites/listen/stop', {
+        const r = await fetch('/api/satellites/listen/stop', {
           method: 'POST', headers: { 'X-OASIS-Request': '1' },
         });
+        await r.text();                     // read on every path, then discard
       } catch (e) { /* ignore */ }
       errNorad = null;
       await poll();
@@ -263,7 +268,7 @@
       // greyed out. This is why the detach case above must NOT come through here.
       fetch('/api/satellites/listen/stop', {
         method: 'POST', headers: { 'X-OASIS-Request': '1' },
-      }).catch(() => {});
+      }).then(r => r.text()).catch(() => {});   // read on every path, then discard
       poll();
     }
 

@@ -177,8 +177,15 @@
     if (!root.fetch) return Promise.resolve(gen === _gen && oasisSpeakFallback(text, onstart));
     return root.fetch(sayUrl(text, kind))
       .then(function (res) {
-        if (!res.ok) throw new Error('speech ' + res.status);
-        return res.arrayBuffer();
+        // The body is read on EVERY path, ok or not -- oasisSpeakWarm above says
+        // why an unread one is a leak. arrayBuffer() is the drain, and a body we
+        // could not read is as unspeakable as a bad status, so both take the
+        // same throw rather than leaving the pipe pinned on the way out.
+        return res.arrayBuffer().catch(function () { return null; })
+          .then(function (buf) {
+            if (!res.ok || !buf) throw new Error('speech ' + res.status);
+            return buf;
+          });
       })
       .then(function (buf) {
         var ctx = oasisAudioContext();

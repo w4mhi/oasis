@@ -98,7 +98,12 @@ function removeSynth() {
 
 test('oasisSpeak falls back when the station has no speech endpoint', async () => {
   const spoken = installSynth([{ lang: 'en-US', name: 'Samantha' }]);
-  S.fetch = () => Promise.resolve({ ok: false, status: 503 });
+  // arrayBuffer() is part of the stub because the real code now drains the body
+  // on the failure path too (an unread one pins a /dev/shm pipe). Without it the
+  // fallback would still happen, but off a TypeError rather than the 503.
+  S.fetch = () => Promise.resolve({
+    ok: false, status: 503, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+  });
   try {
     assert.strictEqual(await S.oasisSpeak('ISS, in ten minutes'), true);
     assert.strictEqual(spoken.length, 1);
