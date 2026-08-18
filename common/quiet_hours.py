@@ -32,12 +32,19 @@ def window(repo_root):
         return FALLBACK
 
 
-def quiet_at(local_hour, window_=None):
+def quiet_at(local_hour, span=None):
     """True when `local_hour` falls inside the quiet window.
+
+    `span` (not `window`: the module already has a function of that name, and
+    a same-named parameter would shadow it inside this body) is None or an
+    explicit (from_hour, to_hour) pair. That is checked with `is None`, not
+    truthiness — `span or FALLBACK` would quietly read a malformed or empty
+    argument as 22:00-07:00 instead of raising, and a caller passing a bad
+    span deserves a loud unpacking error, not a fallback it never asked for.
 
     The window spans midnight, so this is an OR and not a range test.
     """
-    frm, to = window_ or FALLBACK
+    frm, to = FALLBACK if span is None else span
     return local_hour >= frm or local_hour < to
 
 

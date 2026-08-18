@@ -3039,15 +3039,19 @@ refreshAdsb();        setInterval(refreshAdsb, 5000);
 refreshAdsbRecent();  setInterval(refreshAdsbRecent, 60000);
 fetchSats();          setInterval(fetchSats, SAT_REFRESH_SEC * 1000);
                       setInterval(satCountdownTick, 1000);
-// Adopt the shared quiet window before anything that might consult it. The
-// fetch is async, so the very first bell paint below still runs on the
-// fallback constants either way — harmless, since the fallback is the same
-// pair the JSON ships with.
-loadQuietHours();
+// Adopt the shared quiet window before the FIRST bell paint. Fire-and-forget
+// here (matching loadInstalled().then() below) would let renderSatMute() and
+// renderClockBell() run synchronously on quiet-hours.js's fallback constants,
+// because the fetch cannot have resolved yet — silent today only because the
+// fallback and the JSON happen to both say 22/7, which is exactly the kind of
+// agreement this shared file exists so nobody has to maintain by hand. The
+// interval registrations below don't need to wait: their first tick is 1-2s
+// out, long after this fetch has settled either way.
+loadQuietHours().then(() => { renderSatMute(); renderClockBell(); });
 // Pass alerts tick far faster than the roster refresh: the T-10 edge has to be
 // caught within a couple of seconds of crossing, but the pass DATA only changes
 // every 60 s. Cheap — it walks the armed birds already in memory.
-renderSatMute();      setInterval(() => { runSatAlerts(); updateSatLive(); }, 2000);   jennyReady();
+setInterval(() => { runSatAlerts(); updateSatLive(); }, 2000);   jennyReady();
 // Quiet hours begin and end while the kiosk is running — it never reloads.
 // Without this the bell would keep claiming alerts are live all night, and
 // keep claiming they are silent all morning.
@@ -3056,7 +3060,7 @@ setInterval(renderSatMute, 30000);
 // this block's `let`/`const` are still in the temporal dead zone, so reaching
 // the hour bell from there throws before the page has finished loading. 1 s so
 // the strike lands within a second of the digits rolling over.
-renderClockBell();    setInterval(() => { runClockChime(); renderClockBell(); }, 1000);
+setInterval(() => { runClockChime(); renderClockBell(); }, 1000);
 // Unlock Web Audio on the first touch, for the case where someone IS at the
 // panel. An untouched kiosk never gets a gesture at all, which is what
 // --autoplay-policy=no-user-gesture-required covers (scripts/enable-autostart-pi.py).

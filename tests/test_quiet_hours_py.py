@@ -38,6 +38,14 @@ class QuietAtTest(unittest.TestCase):
         self.assertTrue(quiet_hours.quiet_at(22, (22, 7)))    # quiet begins AT 22
         self.assertFalse(quiet_hours.quiet_at(7, (22, 7)))    # and ends AT 07
 
+    def test_empty_span_fails_loudly_rather_than_reading_as_the_fallback(self):
+        # `span` is documented as None-or-a-pair, never falsy-but-present. A
+        # truthiness check (`span or FALLBACK`) would silently substitute
+        # 22:00-07:00 for a malformed argument nobody asked for; the explicit
+        # `is None` check this guards makes that case raise instead.
+        with self.assertRaises(ValueError):
+            quiet_hours.quiet_at(3, ())
+
 
 class QuietNowTest(unittest.TestCase):
     def test_uses_local_time_not_utc(self):
