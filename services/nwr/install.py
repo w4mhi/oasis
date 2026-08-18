@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """services/nwr/install.py — entry point for the NOAA Weather Radio installer."""
+import argparse
 import os
 import sys
 
@@ -9,6 +10,11 @@ from services.nwr.common import nwr_install  # noqa: E402
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Install NOAA Weather Radio support (multimon-ng) for SAME alert decoding.",
+    )
+    parser.parse_args()
+
     result = nwr_install.run(repo_root=_REPO_ROOT, online=None)
     return 0 if result.get("ok") else 1
 
