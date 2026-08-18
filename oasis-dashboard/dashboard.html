@@ -1318,9 +1318,12 @@ const SDR_SVCS = [
   // boot_start_plan starts it), and nothing below reads `enabled`.
   { id:'wx',   hw:'nwr',        unit:'oasis-nwr',      daemon:true },
 ];
+// active_only: this bar paints from `active` and never reads `enabled`, and the
+// endpoint otherwise spawns a second systemctl per call to answer it -- once per
+// assigned service every 8 s, on a Pi 3.
 async function isUnitActive(unit) {
   if (!unit) return false;
-  try { const r = await fetch('/api/health/service?name='+unit, { cache:'no-store' });
+  try { const r = await fetch('/api/health/service?name='+unit+'&active_only=1', { cache:'no-store' });
         return r.ok && (await r.json()).active === 'active'; } catch (_) { return false; }
 }
 // SAT has no systemd unit — its recorder is an ad-hoc subprocess. `active` is WE

@@ -113,7 +113,8 @@ def _winlink_modem_unit():
 @bp.route("/api/health/service")
 def api_health_service():
     """Report systemd status for a known OASIS service (Linux only).
-    Accepts ?name=graywolf|graywolf-api|pat|kiwix|webssh|aprs-sdr-feed|oasis."""
+    Accepts ?name=graywolf|graywolf-api|pat|kiwix|webssh|aprs-sdr-feed|oasis,
+    and ?active_only=1 for callers that paint from `active` alone."""
     import subprocess
     import sys as _sys
 
@@ -136,6 +137,20 @@ def api_health_service():
                         "active": None, "enabled": None,
                         "installed": False, "running": False})
 
+    # Two `systemctl` processes per call, and the kiosk's SDR bar asks once per
+    # assigned service every 8 s -- on a five-service box that is ~75 processes a
+    # minute on the machine least able to spare them, half of them for an answer
+    # that caller never looks at. `active_only` buys the half it uses.
+    #
+    # §5 is intact: the KEY SET does not change, and what was not asked for comes
+    # back null, which is what null means here -- not known in this response. A
+    # caller that says nothing gets exactly what it got before, both spawns
+    # included, so nothing that reads `enabled` or `installed` today changes.
+    # The alternative was a short server-side cache, which would have kept the
+    # spawn AND made `enabled` stale for a while after an enable/disable; this
+    # costs nothing and is never stale, at the price of one query parameter.
+    active_only = request.args.get("active_only") in ("1", "true", "yes")
+
     def _q(verb):
         try:
             r = subprocess.run(["systemctl", verb, f"{name}.service"],
@@ -145,7 +160,8 @@ def api_health_service():
             return ""
 
     active  = _q("is-active")     # active | inactive | failed | activating | ""
-    enabled = _q("is-enabled")    # enabled | disabled | static | "" (not installed)
+    # enabled | disabled | static | "" (not installed) -- None when not asked for.
+    enabled = None if active_only else _q("is-enabled")
 
     # gpsd is socket-activated: gpsd.service is only "active" while a client is
     # connected and goes idle otherwise, but it's available whenever gpsd.socket
@@ -156,7 +172,7 @@ def api_health_service():
                                   capture_output=True, text=True, timeout=5).stdout.strip()
             if sock == "active":
                 active = "active"
-                if not enabled:
+                if enabled == "":
                     enabled = "enabled"
         except Exception:
             pass
@@ -171,13 +187,13 @@ def api_health_service():
         "supported": True,
         "running":   active == "active",
         "active":    active or "unknown",
-        "enabled":   enabled or "not-found",
+        "enabled":   None if active_only else (enabled or "not-found"),
         # Installed = the unit file exists in any real state (enabled/disabled/
         # static/indirect/masked/…). Absent units make `systemctl is-enabled`
         # print "not-found" (Pi OS Trixie / systemd ≥ 254, on stdout) or nothing
         # (older) — both mean not installed, so exclude them explicitly rather
         # than relying on `bool(enabled)`.
-        "installed": enabled not in ("", "not-found"),
+        "installed": None if active_only else enabled not in ("", "not-found"),
     })
 
 

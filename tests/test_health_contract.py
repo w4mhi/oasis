@@ -176,6 +176,42 @@ class ServiceTest(_Base):
         self.assertEqual(d["enabled"], "disabled")
         self.assertIs(d["installed"], True)
 
+    def _spawns(self, query, active="active", enabled="enabled"):
+        """(response, the systemctl verbs it spawned) for *query*."""
+        verbs = []
+
+        def fake_run(cmd, **kw):
+            verbs.append(cmd[1])
+            return _completed(stdout=(active if cmd[1] == "is-active" else enabled))
+        with mock.patch.object(sys, "platform", "linux"), \
+             mock.patch("subprocess.run", fake_run):
+            return self.c.get(query), verbs
+
+    def test_the_default_still_costs_two_systemctl_spawns_and_answers_both(self):
+        r, verbs = self._spawns("/api/health/service?name=kiwix")
+        self.assertEqual(verbs, ["is-active", "is-enabled"])
+        d = r.get_json()
+        self.assertEqual(d["enabled"], "enabled")
+        self.assertIs(d["installed"], True)
+
+    def test_active_only_spawns_one_systemctl_instead_of_two(self):
+        """The kiosk SDR bar polls this per assigned service every 8 s and reads
+        `active` alone; the is-enabled spawn was pure cost on a Pi 3."""
+        _, verbs = self._spawns("/api/health/service?name=kiwix&active_only=1")
+        self.assertEqual(verbs, ["is-active"])
+
+    def test_active_only_keeps_the_key_set_and_nulls_what_it_did_not_ask_for(self):
+        # §5: same keys, null for what cannot be known -- never a shorter dict.
+        r, _ = self._spawns("/api/health/service?name=kiwix&active_only=1",
+                            active="inactive")
+        d = r.get_json()
+        self.assertEqual(set(d), self._KEYS)
+        self.assertIs(d["ok"], True)
+        self.assertEqual(d["active"], "inactive")
+        self.assertIs(d["running"], False)
+        self.assertIsNone(d["enabled"])
+        self.assertIsNone(d["installed"])
+
     def test_absent_unit_is_not_installed(self):
         d = self._svc(active="", enabled="not-found").get_json()
         self.assertIs(d["installed"], False)

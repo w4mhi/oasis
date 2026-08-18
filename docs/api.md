@@ -160,7 +160,7 @@ change with the answer.
 | Method | Path | Params | Description |
 |---|---|---|---|
 | GET | `/api/health/probe` | `service`, `port` | Server-side reachability check of a known local service (returns real HTTP status vs opaque no-cors). `{reachable, status, detail}`. |
-| GET | `/api/health/service` | `name` | systemd status for a known unit (`graywolf`, `graywolf-api`, `pat`, `pat-direwolf`, `kiwix`, `webssh`, `aprs-sdr-feed`, `openwebrx`, `dump1090-fa`, `adsb-api`, `gpsd`, `oasis`). `{running, active, enabled, installed, supported}`; `supported:false` off-Linux, same keys. |
+| GET | `/api/health/service` | `name`, `active_only` | systemd status for a known unit (`graywolf`, `graywolf-api`, `pat`, `pat-direwolf`, `kiwix`, `webssh`, `aprs-sdr-feed`, `openwebrx`, `dump1090-fa`, `adsb-api`, `gpsd`, `oasis`). `{running, active, enabled, installed, supported}`; `supported:false` off-Linux, same keys. `active_only=1` answers from `is-active` alone — one `systemctl` spawn instead of two, with `enabled` and `installed` null (same keys) — for callers that paint from `active`. |
 | GET | `/api/health/binary` | `name` | Whether a named system binary (e.g. `rtl_test`) is on `PATH`/standard dirs. `{present, path}`. |
 | GET | `/api/health/feed-flow` | — | Whether UDP datagrams are actually flowing on the RTL-SDR feed port (passive `tcpdump` sample; needs scoped sudo). `{supported, probed, flowing, pps, reason, detail}`. `flowing` is **null** when nothing was measured — "we never listened" is not "the feed is dead". Reasons: `not-linux`, `tcpdump-missing`, `no-privilege`, `probe-error`. |
 | GET | `/api/health/zim` | — | Offline Wikipedia/ZIM presence + count for the Kiwix card. |
