@@ -28,22 +28,39 @@ function conflictSource() {
 
 // Build a live resolver over fake page state. `services` maps a card id to
 // {state, device}; every card in it is assigned that device_id.
-function resolver(services) {
-  const calls = { confirms: [], stopped: [], pings: 0 };
+//
+// `opts.owrx` is what the systemd probe answers for OpenWebRX ('active',
+// 'inactive', or 'unreachable'). It is a probe and not a card because OASIS
+// stopped tracking OpenWebRX in 3.92.0: there is no assignment to compare and
+// no card polling it, so the resolver asks systemd at click time.
+// `opts.answers` overrides confirm()'s reply per call (default: always OK).
+function resolver(services, opts) {
+  opts = opts || {};
+  const calls = { confirms: [], stopped: [], pings: 0, probes: [] };
   const svcStates = {};
   const hwServices = {};
+  // Mirrors index.html exactly — owrx is absent from BOTH maps there.
   const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink', feed: 'aprs',
-                                owrx: 'openwebrx', nwr: 'nwr' };
+                                nwr: 'nwr' };
   const SVC_UNITS = { feed: 'aprs-sdr-feed', adsb: 'dump1090-fa',
-                      owrx: 'openwebrx', nwr: 'oasis-nwr', gw: 'graywolf' };
+                      nwr: 'oasis-nwr', gw: 'graywolf' };
   Object.keys(services).forEach((id) => {
     svcStates[id] = services[id].state;
     hwServices[HW_SERVICE_FOR_CARD[id]] = { device_id: services[id].device };
   });
-  const fakeConfirm = (msg) => { calls.confirms.push(msg); return true; };
-  const fakeFetch = async (url, opts) => {
-    calls.stopped.push(JSON.parse(opts.body));
-    return { ok: true, json: async () => ({ ok: true }) };
+  const answers = (opts.answers || []).slice();
+  const fakeConfirm = (msg) => {
+    calls.confirms.push(msg);
+    return answers.length ? answers.shift() : true;
+  };
+  const fakeFetch = async (url, opt) => {
+    if (String(url).startsWith('/api/health/service')) {
+      calls.probes.push(String(url));
+      if (opts.owrx === 'unreachable') throw new Error('network down');
+      return { ok: true, json: async () => ({ active: opts.owrx || 'inactive' }) };
+    }
+    calls.stopped.push(JSON.parse(opt.body));
+    return { ok: true, text: async () => '', json: async () => ({ ok: true }) };
   };
   const factory = new Function(
     '_svcStates', '_hwLast', 'HW_SERVICE_FOR_CARD', 'SVC_UNITS',
@@ -98,6 +115,72 @@ test('a stopped watch is not a conflict', async () => {
   });
   assert.strictEqual(await resolve('adsb'), true);
   assert.strictEqual(calls.confirms.length, 0);
+});
+
+// ── OpenWebRX: coarse, device-blind (3.92.0) ────────────────────────────────
+// It has no assignment to compare, so it cannot join the per-device loop. It
+// gets asked about whenever it is UP, on the chance the tuner it holds is this
+// one. Over-asking costs a click; under-asking costs a silent DOWN card.
+
+test('a running OpenWebRX is offered for stopping before ADS-B starts', async () => {
+  const { resolve, calls } = resolver(
+    { adsb: { state: 'down', device: 'rtl-1' } }, { owrx: 'active' });
+  const proceed = await resolve('adsb');
+  assert.strictEqual(calls.confirms.length, 1, 'a running OpenWebRX must be raised');
+  assert.match(calls.confirms[0], /OpenWebRX/,
+    'the prompt must name OpenWebRX, since the operator has no card for it');
+  assert.match(calls.confirms[0], /may be/,
+    'the wording must not claim certainty about a dongle we cannot see');
+  assert.strictEqual(proceed, false, 'the start waits while OpenWebRX stops');
+  assert.deepStrictEqual(calls.stopped, [{ unit: 'openwebrx', action: 'stop' }]);
+  assert.strictEqual(calls.pings, 1);
+});
+
+test('a stopped OpenWebRX prompts nothing', async () => {
+  const { resolve, calls } = resolver(
+    { adsb: { state: 'down', device: 'rtl-1' } }, { owrx: 'inactive' });
+  assert.strictEqual(await resolve('adsb'), true);
+  assert.strictEqual(calls.confirms.length, 0);
+  assert.strictEqual(calls.probes.length, 1, 'the probe still runs');
+});
+
+test('an unreachable status probe does not block the start', async () => {
+  // Fail open: the operator asked for a start, and a status endpoint we could
+  // not reach is not evidence of a conflict. The start fails on its own terms
+  // if it was wrong.
+  const { resolve, calls } = resolver(
+    { adsb: { state: 'down', device: 'rtl-1' } }, { owrx: 'unreachable' });
+  assert.strictEqual(await resolve('adsb'), true);
+  assert.strictEqual(calls.confirms.length, 0);
+});
+
+test('"continue anyway" past OpenWebRX still owes the per-device prompt', async () => {
+  // Two things can hold this dongle. Declining to stop the one we cannot see
+  // must not skip the one we can — that would trade a coarse prompt for a
+  // precise one, which is the wrong direction.
+  const { resolve, calls } = resolver(
+    { adsb: { state: 'down', device: 'rtl-1' },
+      nwr:  { state: 'up',   device: 'rtl-1' } },
+    { owrx: 'active', answers: [false] });   // Cancel on ORX, OK on the watch
+  assert.strictEqual(await resolve('adsb'), false);
+  assert.strictEqual(calls.confirms.length, 2, 'both holders must be raised');
+  assert.match(calls.confirms[1], /weather watch/i);
+  assert.deepStrictEqual(calls.stopped, [{ unit: 'oasis-nwr', action: 'stop' }],
+    'declining the ORX prompt must not stop it anyway');
+});
+
+test('OpenWebRX is never re-added to the assignment-driven lists', () => {
+  // The regression this whole change guards: an ORX entry in RTL_SDR_CARDS
+  // compares a device_id that no longer exists, so it matches nothing and the
+  // prompt silently stops firing. If OpenWebRX comes back here, it must come
+  // back with an assignment behind it.
+  const src = conflictSource();
+  const decls = src.slice(0, src.indexOf('\n\n'));
+  const cards = new Function(decls + '\nreturn { RTL_SDR_CARDS, RTL_SDR_LABEL };')();
+  assert.ok(!cards.RTL_SDR_CARDS.includes('owrx'),
+    'OpenWebRX has no OASIS assignment — it cannot take part in a per-device check');
+  assert.match(src, /const OWRX_UNIT = 'openwebrx'/,
+    'the coarse branch needs the unit name to stop it');
 });
 
 test('every RTL-SDR consumer in the list can be named and stopped', () => {

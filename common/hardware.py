@@ -45,11 +45,6 @@ SERVICE_UNITS = {
     "aprs":      [],
     "winlink":   ["pat-direwolf"],
     "adsb":      ["dump1090-fa"],
-    # openwebrx's assignment is advisory (no apply hook — it's configured in
-    # OpenWebRX's own Admin → SDR profiles UI). It's tracked only so the
-    # start-time shared-dongle check knows which RTL-SDR it "wants"; empty
-    # unit list mirrors aprs's soundcard-only base. See v2 design §2.
-    "openwebrx": [],
     # satellites listening (services/satellites/listen.py) is an ad-hoc rtl_fm
     # subprocess run by Flask, not a systemd unit. "satellites-listen" is a
     # SYNTHETIC unit: callers that care whether we hold the dongle wrap is_active
@@ -72,7 +67,6 @@ DEVICE_KIND_FOR_SERVICE = {
     "aprs":      {"rtl-sdr", "digirig", "dra-pi", "draws"},
     "winlink":   {"digirig", "dra-pi", "draws"},
     "adsb":      {"rtl-sdr"},
-    "openwebrx": {"rtl-sdr"},
     # satellites also accepts a DRAWS radio port: the operator tunes the radio
     # by hand (no CAT on this HAT) and OASIS records the audio. Restricted to
     # channel 1 by _device_ok_for_service — channel 0 is Winlink's.
@@ -88,14 +82,17 @@ DEVICE_KIND_FOR_SERVICE = {
 # mode-invariant. (GrayWolf itself is web-admin-configured — OASIS binds only the
 # feed's dongle, not GrayWolf's radio interface.)
 #
-# openwebrx DOES carry entries above (empty unit list, rtl-sdr kind) so the
-# shared-dongle check knows what it wants — but scripts/apply_hardware.py has
-# no apply hook for it: its RTL-SDR is picked entirely inside OpenWebRX's own
-# Admin -> SDR profiles UI, so an OASIS-level assignment would never DO
-# anything beyond that bookkeeping. Same reasoning as GrayWolf above. That is
-# also why it's the one service left out of the assignment console's matrix
-# (_CONSOLE_SERVICES in server/routes/hardware.py) — nothing there could
-# actually be routed, so it stays on its own service card instead.
+# openwebrx used to carry entries above (empty unit list, rtl-sdr kind) so the
+# shared-dongle check could know which dongle it "wanted". Removed in 3.92.0:
+# the record wrote nothing (no apply hook — the SDR is picked inside OpenWebRX's
+# own Admin -> SDR profiles UI), so the assignment was pure bookkeeping that
+# looked like control, and OASIS no longer ships it. It stays installable, and
+# the operator hands it a dongle by hand. What remains is evidence-based and
+# lives elsewhere: `openwebrx` is still in hardware_detect.SDR_CONSUMING_UNITS,
+# so a tuner it holds still reads BUSY here, still refuses an EEPROM burn, and
+# still trips the dashboard's conflict prompt. Do not re-add a service entry to
+# make some surface "know about" OpenWebRX — ask whether the unit is running
+# instead. That answer is true; an assignment never was.
 APRS_FEED_UNIT = "aprs-sdr-feed"
 
 # Tokens that appear in SERVICE_UNITS but are NOT real systemd units — they must
@@ -134,8 +131,8 @@ def boot_start_plan(inv):
     order, which puts APRS ahead of ADS-B), skipping:
 
       * services with no device assigned,
-      * services whose unit list is empty (advisory-only assignments such as
-        openwebrx, or APRS on a soundcard where GrayWolf owns the device), and
+      * services whose unit list is empty (advisory-only assignments — APRS on
+        a soundcard, where GrayWolf owns the device), and
       * synthetic non-units (see SYNTHETIC_UNITS).
 
     Pure: it decides, it does not act. The caller starts these with whatever
@@ -244,6 +241,20 @@ def load(repo_root):
 
     assignments = {}
     for service, device_id in raw.get("assignments", {}).items():
+        if service not in SERVICE_UNITS:
+            # A service OASIS no longer manages. Dropped rather than carried:
+            # every reader downstream (assignees(), the console's holder
+            # collapse, the Setup card's "● service" line) trusts this dict as
+            # the list of things that CAN hold a dongle, and a stale key makes a
+            # dongle read as claimed by something no surface can show, start or
+            # release. That is not hypothetical — retiring openwebrx's advisory
+            # assignment in 3.92.0 left exactly this key on every station that
+            # had ever touched the Hardware card, and nothing else would have
+            # removed it: the kind check below skips a service with no entry in
+            # DEVICE_KIND_FOR_SERVICE (allowed_kinds is None), so the row would
+            # have been preserved forever, error-free and unreachable.
+            errors.append(f"dropped assignment for unknown service {service!r}")
+            continue
         if device_id not in devices:
             errors.append(f"service {service!r} assigned to unknown device {device_id!r}")
             assignments[service] = device_id  # keep it — can_start() distinguishes
@@ -304,7 +315,7 @@ def assignee(inv, device_id):
 
 def assignees(inv, device_id):
     """Every service pointing at a device, in assignment (dict) order. Under
-    the shared-rtl-sdr model a dongle can be assigned to aprs/adsb/openwebrx
+    the shared-rtl-sdr model a dongle can be assigned to aprs/adsb/nwr/satellites
     at once — assignment is advisory bookkeeping; exclusivity is acquired at
     start time, not here."""
     return [service for service, did in inv.assignments.items() if did == device_id]
@@ -442,9 +453,10 @@ def can_assign(inv, service, device_id):
         return False, None
     if not _device_ok_for_service(inv.devices[device_id], service):
         return False, None
-    # rtl-sdr is a SHARED resource: aprs/adsb/openwebrx may all be assigned the
-    # same dongle (advisory bookkeeping — §2). Exclusivity is acquired at start
-    # time, not here. digirig/dra-pi (winlink) stay exclusive: one holder only.
+    # rtl-sdr is a SHARED resource: aprs/adsb/nwr/satellites may all be assigned
+    # the same dongle (advisory bookkeeping — §2). Exclusivity is acquired at
+    # start time, not here. digirig/dra-pi (winlink) stay exclusive: one holder
+    # only.
     if kind != "rtl-sdr":
         holder = assignee(inv, device_id)
         if holder is not None and holder != service:

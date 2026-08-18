@@ -93,7 +93,7 @@
     </figure>
     <p>
       Open it from the <strong>SRV OPS</strong> burger at the far right of the dashboard
-      header, or from the <strong>APRS / ADS-B / ORX / SAT</strong> pill on the
+      header, or from the <strong>APRS / ADS-B / SAT / WX</strong> pill on the
       <a href="panel-kiosk.html">kiosk</a>. Both surfaces render differently &mdash; a
       right-docked popover against a full-screen touch overlay &mdash; but the decision
       logic and the server contract are shared in <code>common/js/hw-console.js</code>, so
@@ -161,13 +161,16 @@
       start a unit that was not there. The console now asks the recorder itself.
     </p>
     <p>
-      <strong>OpenWebRX is in the same class but is not a column.</strong> It has no unit
-      OASIS can point at a dongle: its SDR is chosen entirely inside OpenWebRX&rsquo;s own
-      <em>Admin &rarr; SDR profiles</em> UI. An OASIS-level assignment for it is advisory
-      bookkeeping &mdash; it exists only so the shared-dongle conflict check knows which
-      dongle ORX <em>wants</em> &mdash; so offering a matrix cell would offer a control that
-      could not do anything. ORX therefore keeps its own service card with its own
-      START/STOP. STOP ALL <em>does</em> stop it.
+      <strong>OpenWebRX is not here at all.</strong> Its SDR is chosen entirely inside
+      OpenWebRX&rsquo;s own <em>Admin &rarr; SDR devices</em> UI, so OASIS has nothing to
+      point at a dongle. It used to carry an advisory assignment anyway &mdash; a record
+      that wrote nothing, so the conflict check would know which dongle ORX
+      <em>wanted</em>. That was removed in 3.92.0 together with its service card and its
+      dot on the panel: a control that cannot act is worse than no control, because the
+      operator believes it. Start and stop it over SSH
+      (<code>sudo systemctl start openwebrx</code>). What survives is evidence-based
+      &mdash; a dongle ORX holds still reads busy, starting another SDR service still
+      warns you that ORX is up, and STOP ALL <em>does</em> stop it.
     </p>
 
     <h2>Tapping a cell</h2>
@@ -290,8 +293,10 @@
         <tr><td>The <strong>ADS-B</strong>, <strong>APRS SDR feed</strong> and <strong>Winlink RF</strong> cards have no START button</td>
             <td>By design. Those three are hardware-backed and are started, stopped and routed
             <em>from this matrix</em>, so a per-card power button would be a second control for
-            the same thing that could disagree with it. OpenWebRX is the deliberate exception
-            &mdash; it is not in the matrix, so it keeps its card button.</td></tr>
+            the same thing that could disagree with it.</td></tr>
+        <tr><td>There is no <strong>OpenWebRX</strong> card any more</td>
+            <td>By design, since 3.92.0. OASIS neither assigns it a dongle nor starts it:
+            <code>sudo systemctl start openwebrx</code>, then open <code>:8073</code>.</td></tr>
         <tr><td>The <strong>Satellites</strong> page says <em>device: unassigned</em> and every downlink option is greyed out</td>
             <td>The <code>satellites</code> service has no device. Route <strong>SAT</strong>
             onto a dongle here and the options become selectable. The page&rsquo;s own hint points at

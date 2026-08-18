@@ -504,7 +504,7 @@ sudo systemctl enable --now oasis
 
 `/api/system` drives a row of header cards, polled every 5 seconds: **local + UTC clocks**, a **CPU card** (usage / SoC temp / RAM / disk inline, plus a per-core usage bar for each core), a **PROCESSES card** (top 3 processes by CPU, 1-min load average), a **STATUS card** (uptime, Pi power/throttle state, the HW radio-assignment dots described below, and host/LAN IP), and a **GPS card** showing fix mode, satellites, HDOP, lat/lon, altitude, and chrony clock-lock status. Everything is colour-coded green/amber/red by threshold. A **Units** pill (Imperial/Metric) toggles all displayed measurements (temperature, altitude, speed) in one tap — preference is persisted per browser. `/api/audio` (ALSA sound card list) is served but not rendered on the main dashboard; it's deferred to the Setup/health-check page.
 
-The **STATUS** card's Host row is the hostname and LAN IP of the machine actually serving the page. The **HDOP** value on the GPS card is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH, OpenWebRX), so you never need to SSH in just to restart a service.
+The **STATUS** card's Host row is the hostname and LAN IP of the machine actually serving the page. The **HDOP** value on the GPS card is colour-coded across six steps from ideal (bright green, < 1) through excellent, good, moderate, fair, to poor (red, > 20). Service cards include **START/STOP** buttons for controllable services (GrayWolf, Winlink, Kiwix, Web SSH), so you never need to SSH in just to restart a service.
 
 Beyond simple start/stop, the **Service Operations** console opens a device→service matrix: reroute an SDR or sound card between services with one tap, **lock** a device to protect its assignment, or **STOP ALL** — with a server-side resource guardian that can run STOP ALL for you when the box overheats. Full writeup: [Service Operations console (hardware assignment)](#service-operations-console-hardware-assignment).
 
@@ -1487,10 +1487,10 @@ lsmod | grep dvb_usb_rtl28xxu     # want NO output (empty). Any output = TV driv
 
 **What the audio test should sound like.** The `rtl_fm … | aplay` pipe on 144.390 plays **open-squelch hiss with occasional short digital "braaap" bursts** (those bursts are APRS packets). Continuous static with *no* bursts on a busy band, or dead silence, = no antenna / wrong device, not "it's working." Press Ctrl+C to stop.
 
-**Who's using the RTL-SDR right now?** The dongle is shared — the APRS feed, ADS-B, OpenWebRX, and satellite listening each need it exclusively, so only one runs at a time. To see the current owner:
+**Who's using the RTL-SDR right now?** The dongle is shared — the APRS feed, ADS-B, the weather watch, OpenWebRX (which OASIS does not manage, but which still takes a tuner) and satellite listening each need it exclusively, so only one runs at a time. To see the current owner:
 
 ```bash
-systemctl is-active aprs-sdr-feed dump1090-fa openwebrx    # whichever prints "active" holds the dongle
+systemctl is-active aprs-sdr-feed dump1090-fa oasis-nwr openwebrx   # whichever prints "active" holds the dongle
 ```
 (Satellite live-audio also grabs it while a bird is armed — the Satellites page header shows which one.) If a mode reports "no device / busy", stop the active one first.
 
@@ -1565,47 +1565,41 @@ offline bundling is a future task). Targets Debian/Raspberry Pi OS **bookworm/tr
 
 OpenWebRX is installed **off by default** (disabled at boot) because it grabs the
 RTL-SDR exclusively — the same dongle the **APRS SDR feed** and **ADS-B** use.
-Manage it from the **START / STOP** button on the dashboard's **OpenWebRX** card:
+**As of 3.92.0 OASIS does not manage OpenWebRX at all.** There is no service
+card, no health tile, no dot in the kiosk's SDR bar, and no dongle assignment —
+you run it yourself, and you tell it which dongle to use inside its own
+**Admin → SDR devices**. The reasoning: OASIS could never actually *make* that
+choice, so an assignment row described a decision it did not own. What was left
+was bookkeeping that looked like control.
 
-- **START is gated on a dongle** — and there is currently **no UI to make that
-  assignment**. Until an RTL-SDR is assigned to `openwebrx` the button stays
-  blocked, and its tooltip ("Assign an SDR dongle in Setup before starting")
-  points at UI that no longer exists: the Setup page's Hardware card only
-  *detects* devices, and ORX has no column in the HW/SRV matrix (see below). Until
-  ORX joins the matrix, assign it over the API:
+Run it by hand:
 
-  ```bash
-  # device ids come from configuration/hardware.json -> devices[].id
-  curl -s -X POST http://localhost:8083/api/hardware/assign \
-    -H 'Content-Type: application/json' -H 'X-OASIS-Request: 1' \
-    -d '{"service":"openwebrx","device_id":"rtl-sdr-00000031"}'
-  ```
+```bash
+sudo systemctl start openwebrx     # then open http://<station>:8073/
+sudo systemctl stop openwebrx      # frees the dongle again
+sudo systemctl enable openwebrx    # optional: back at every boot (see the warning)
+```
 
-  The card's `device:` row then shows the dongle and START unblocks.
-- **Same-dongle conflicts are resolved at click time.** If the APRS SDR feed or
-  ADS-B is already running *on that same dongle*, START asks first — **OK** stops
-  the other one (click START again once it's down), **Cancel** tries anyway and
-  will fail on the shared dongle. A different dongle is no conflict: nothing is
-  asked and both keep running.
-- **Boot state is left untouched.** START/STOP are plain runtime actions on
-  `openwebrx`, so it stays disabled at boot however you leave it — deliberate,
-  since it would otherwise seize the dongle on every boot. If you do want it back
-  automatically: `sudo systemctl enable openwebrx`. (The APRS feed and ADS-B are
-  the opposite — starting one *enables* it and stopping it *disables* it, so their
-  choice does survive a reboot. That's why stopping the feed via the conflict
-  prompt also takes it off boot.)
-- **Stopping ORX does not restart anything.** The APRS stack is not brought back
-  for you — start the feed again from its own card when you want it.
-- **ORX is not in the SRV OPS matrix.** APRS, ADS-B, Winlink and SAT are routed
-  there; OpenWebRX is not, because OASIS cannot tell it which dongle to use — that
-  is picked inside ORX's own **Admin → SDR profiles**. The OASIS assignment is
-  advisory bookkeeping so the conflict check above knows which dongle ORX wants —
-  which is also why it has to be made by hand today.
-- **STOP ALL** (matrix header, and the resource guardian's countdown) *does* stop
-  `openwebrx`.
+Enabling it at boot is the one thing worth thinking twice about: OpenWebRX takes
+its dongle at startup, before the APRS feed, ADS-B or the weather watch get a
+chance, and none of them will say why they failed.
 
-The card's **OPEN ↗** button opens the OpenWebRX UI (`:8073`) in a new tab.
-Requires `scripts/enable-service-controls.py` (grants the scoped systemctl rule).
+What OASIS still does for you — all of it evidence-based, none of it needing an
+assignment:
+
+- **The dashboard warns before a collision.** Pressing START on the APRS SDR
+  feed, ADS-B or the weather watch checks whether `openwebrx` is running and, if
+  it is, offers to stop it first. Deliberately coarse — OASIS cannot see *which*
+  tuner ORX took, so it asks whenever ORX is up, wording it "may be using this
+  RTL-SDR". **OK** stops it (click START again once it's down); **Cancel** tries
+  anyway and will fail if the dongle really was ORX's.
+- **A dongle ORX holds reads BUSY.** `openwebrx` stays in the SDR-consuming unit
+  list, so the burn-serial guard refuses while it runs and the Setup page's
+  dongle rows show the tuner as in use.
+- **STOP ALL** (matrix header, and the resource guardian's thermal countdown)
+  still stops `openwebrx`.
+
+Removed with the rest: the card's OPEN ↗ button. Bookmark `:8073` yourself.
 
 ### Recommended monitoring profiles (band presets)
 

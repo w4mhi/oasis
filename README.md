@@ -75,9 +75,9 @@ The daemon-backed cards in the dashboard **SERVICES** strip. Once **[service con
 - **🌐 Web server** — Flask + gunicorn serving the dashboard, FCC lookup, map tiles, forms, and the API. The foundation everything else rides on. → [Setup](docs/SETUP.md#server-setup)
 - **📡 APRS** *(Pi)* — **GrayWolf** TNC / iGate / digipeater with a live station map (track history, auto-fly, sonar) and tactical messaging, plus the **APRS Stats API** that feeds the dashboard and map. → [Setup](docs/SETUP.md#graywolf-aprs)
 - **📻 APRS SDR feed** *(Pi, Trixie)* — demodulate 2 m APRS from a USB RTL-SDR dongle and feed it into GrayWolf (receive / iGate). → [Setup](docs/SETUP.md#rtl-sdr)
-- **✈️ ADS-B aircraft** *(Pi)* — decode 1090 MHz aircraft locally with `dump1090-fa`; positions plot on the Traffic map above. Shares the RTL-SDR dongle, so starting it stops the APRS feed / OpenWebRX. → [Setup](docs/SETUP.md#ads-b-aircraft)
+- **✈️ ADS-B aircraft** *(Pi)* — decode 1090 MHz aircraft locally with `dump1090-fa`; positions plot on the Traffic map above. Shares the RTL-SDR dongle, so starting it offers to stop the APRS feed / weather watch / OpenWebRX first. → [Setup](docs/SETUP.md#ads-b-aircraft)
 - **📧 Winlink RF** *(Pi)* — Pat client + web UI for store-and-forward email over radio. **Internet gateway (Telnet) works now; the RF radio path is experimental** — see [Winlink setup](docs/SETUP.md#winlink-pat) for status. → [Setup](docs/SETUP.md#winlink-pat)
-- **🌐 OpenWebRX** *(Pi)* — optional SDR receiver web UI for spectrum monitoring and multi-mode decoding. → [Setup](docs/SETUP.md#openwebrx-sigint)
+- **🌐 OpenWebRX** *(Pi)* — optional SDR receiver web UI for spectrum monitoring and multi-mode decoding. Installed by OASIS but **not managed by it**: you start it and pick its dongle yourself, in its own admin UI. → [Setup](docs/SETUP.md#openwebrx-sigint)
 - **📚 Wiki Kiwix** *(Pi)* — Kiwix serving an offline Wikipedia ZIM snapshot. → [Setup](docs/SETUP.md#kiwix--wikipedia)
 - **💻 Web SSH** *(Pi)* — a browser login shell (ttyd) on the Pi — no SSH client needed. → [Setup](docs/SETUP.md#webssh--browser-terminal)
 - **🗣️ Speech** *(Pi)* — a station-wide voice any subsystem can call. The server synthesises a WAV with **Piper** (neural voice **Jenny**, en_GB) in a subprocess and caches it by content under a 50 MB budget; the browser plays it through the same unlocked AudioContext as the pass chime, so announcements queue instead of mushing together. Opt-in, and Python 3.11+ / 64-bit only — without it every announcement still speaks, using the espeak-ng fallback. Neither engine nor voice model lives in the repo; the bundle build fetches both. → [Setup](docs/SETUP.md#speech-piper-voice)
@@ -200,7 +200,7 @@ On a Pi, **`setup-oasis.py` is the front door for a terminal install** — it de
 | Winlink RF via DigiRig | ⬜ | Point the Winlink Direwolf modem at a DigiRig Mobile (USB audio + CP210x serial RTS PTT) instead of the DRA-Pi. |
 | Kiwix (offline content) | ⬜ | `kiwix-serve` on :8081 for ZIM content (add Wikipedia below). |
 | Web SSH (ttyd) | ✅ | Browser terminal on :7681. |
-| OpenWebRX (SDR monitor) | ⬜ | RX-only SDR web UI on :8073 — experimental, off by default. |
+| OpenWebRX (SDR monitor) | ⬜ | RX-only SDR web UI on :8073 — experimental, off by default, unmanaged (start it yourself). |
 | Dashboard service controls | ✅ | Scoped sudoers rule so the dashboard start/stop buttons work. |
 | Wi-Fi AP fallback | ✅ | Pi hosts the `OASIS` hotspot when no known network is in range. |
 

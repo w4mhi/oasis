@@ -49,7 +49,6 @@
     { id: 'rb',      name: 'Repeater Book',   gate: { features: ['repeaterbook'] } },
     { id: 'manuals', name: 'Radio Manuals',   gate: null },
     { id: 'kiwix',   name: 'Kiwix',           gate: { features: ['kiwix'], unit: 'kiwix' } },
-    { id: 'owrx',    name: 'OpenWebRX',       gate: { features: ['openwebrx'], unit: 'openwebrx' } },
     { id: 'wiki',    name: 'Wikipedia',       gate: { features: ['wikipedia'], unit: 'kiwix' } },
   ];
 
@@ -120,8 +119,9 @@
   //   active    the unit is running, or WE hold the dongle (recording/streaming)
   //   blocked   assigned, but someone else holds it
   //   daemon    readiness IS a running unit. Explicit, not inferred from having a
-  //             unit name: openwebrx is a daemon we cannot detect (no OASIS unit),
-  //             and inferring would have flipped it to a green we cannot justify.
+  //             unit name — deriving "has a unit" from "is a daemon" is how a
+  //             service OASIS cannot actually probe ends up painted a green
+  //             nothing supports. Say which it is; never infer it.
   function sdrDotClass(s) {
     s = s || {};
     if (!s.assigned) return '';

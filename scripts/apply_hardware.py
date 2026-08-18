@@ -30,8 +30,9 @@ _aprs_feed_spec = importlib.util.spec_from_file_location(
 _aprs_feed = importlib.util.module_from_spec(_aprs_feed_spec)
 _aprs_feed_spec.loader.exec_module(_aprs_feed)
 
-# service name -> apply(repo_root, device_or_None). OpenWebRX is intentionally
-# absent (not device-bound).
+# service name -> apply(repo_root, device_or_None). Every device-bound service
+# OASIS manages has an entry; a service with no hook here has no business
+# carrying an assignment at all (which is why openwebrx no longer does).
 DEFAULT_HOOKS = {
     "adsb": _adsb.apply,
     "aprs": _aprs_feed.apply,

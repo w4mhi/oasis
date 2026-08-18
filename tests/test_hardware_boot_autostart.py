@@ -63,7 +63,16 @@ class BootStartPlanTest(unittest.TestCase):
         self.assertNotIn("satellites-listen", plan)
 
     def test_advisory_only_assignment_starts_nothing(self):
-        # openwebrx is configured in its own admin UI; OASIS has no apply hook.
+        # APRS on a radio port is soundcard-only: GrayWolf owns the device and
+        # OASIS starts no unit of its own for it.
+        inv = _inv(devices={"d": _dev("d", "dra-pi")}, assignments={"aprs": "d"})
+        self.assertEqual(hardware.boot_start_plan(inv), [])
+
+    def test_an_unmanaged_service_in_the_plan_starts_nothing(self):
+        # A station that assigned a dongle to openwebrx before 3.92.0 keeps the
+        # key in hardware.json until the next save. boot_start_plan iterates
+        # SERVICE_UNITS, so the stale row cannot contribute a unit — belt to
+        # load()'s braces, which drops the key outright.
         inv = _inv(devices={"r": _dev("r", "rtl-sdr")}, assignments={"openwebrx": "r"})
         self.assertEqual(hardware.boot_start_plan(inv), [])
 

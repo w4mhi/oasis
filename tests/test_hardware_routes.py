@@ -130,12 +130,13 @@ class HardwareRoutesTest(unittest.TestCase):
         body = json.loads(r.data)
         self.assertEqual(body["services"]["adsb"],
                           {"device_id": "a", "ok": True, "reason": ""})
+        # The payload is keyed off SERVICE_UNITS, so a service OASIS stopped
+        # managing leaves it entirely — no null-assignment row for openwebrx.
+        self.assertNotIn("openwebrx", body["services"])
         self.assertEqual(body["services"]["winlink"],
                           {"device_id": None, "ok": False, "reason": "unassigned"})
-        # No auto-assign: openwebrx + aprs stay unassigned until the operator
-        # assigns a dongle to them via the dropdown.
-        self.assertEqual(body["services"]["openwebrx"],
-                          {"device_id": None, "ok": False, "reason": "unassigned"})
+        # No auto-assign: aprs stays unassigned until the operator assigns a
+        # dongle to it via the dropdown.
         self.assertEqual(body["services"]["aprs"],
                           {"device_id": None, "ok": False, "reason": "unassigned"})
 

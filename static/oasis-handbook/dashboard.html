@@ -138,7 +138,7 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Strip</th><th>Cards</th></tr></thead>
       <tbody>
-        <tr><td><strong>Radio / RF</strong></td><td>Web SSH, APRS GrayWolf, APRS SDR Feed, OpenWebRX, ADS-B Aircraft, Winlink RF, Wiki Kiwix.</td></tr>
+        <tr><td><strong>Radio / RF</strong></td><td>Web SSH, APRS GrayWolf, APRS SDR Feed, ADS-B Aircraft, Winlink RF, Wiki Kiwix.</td></tr>
         <tr><td><strong>System / infrastructure</strong></td><td>Frontend Flask, Web Server (badged <code>gunicorn</code> or <code>werkzeug</code>), GPS (gpsd), APRS Stats API. Single-row cards &mdash; colour only, no buttons.</td></tr>
       </tbody>
     </table></div></div>
@@ -155,9 +155,9 @@
       and the <strong>APRS SDR Feed</strong> &mdash; deliberately have no per-card power
       button, because they are started by routing a device to them in the SRV OPS matrix.
       ADS-B and Winlink RF get an <strong>OPEN&nbsp;&#8599;</strong> button instead; the APRS
-      SDR feed gets neither and is purely matrix-driven. <strong>OpenWebRX is the
-      exception</strong> and keeps its card button, because it picks its own dongle in its own
-      admin UI and is not in the matrix at all. Everything else with a systemd unit still has
+      SDR feed gets neither and is purely matrix-driven. <strong>OpenWebRX has no card at
+      all</strong> since 3.92.0 &mdash; it picks its own dongle in its own admin UI, so
+      OASIS stopped pretending to manage it; start it over SSH. Everything else with a systemd unit still has
       START / STOP, provided you enabled <a href="service-controls.html">service
       controls</a>. See <a href="service-operations.html">Service Operations</a>.</p></div>
     </div>

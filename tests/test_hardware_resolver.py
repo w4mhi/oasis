@@ -13,8 +13,11 @@ class ServiceUnitsTest(unittest.TestCase):
         inv = _inv()
         self.assertEqual(HW.service_units(inv, "adsb"), ["dump1090-fa"])
         self.assertEqual(HW.service_units(inv, "winlink"), ["pat-direwolf"])
-        # openwebrx is not hardware-gated — see common/hardware.py's comment.
+        # A service OASIS does not manage resolves to no units rather than
+        # raising — openwebrx is the live case (retired in 3.92.0), and a stale
+        # hardware.json out in the field is what would reach this path.
         self.assertEqual(HW.service_units(inv, "openwebrx"), [])
+        self.assertNotIn("openwebrx", HW.SERVICE_UNITS)
 
     def test_aprs_on_sdr_adds_feed_unit(self):
         inv = _inv(devices={"s": _dev("s", "rtl-sdr", serial="1")}, assignments={"aprs": "s"})

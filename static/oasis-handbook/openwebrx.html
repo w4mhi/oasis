@@ -80,13 +80,19 @@
     <p>
       <strong>OpenWebRX+</strong> is an optional receive-only SDR web UI on port
       <strong>8073</strong> for spectrum monitoring and multi-mode decoding. It is off by
-      default and experimental in OASIS.
+      default, and since 3.92.0 <strong>OASIS does not manage it</strong>: no service card,
+      no health tile, no dot on the panel, no dongle assignment. Install it, start it and
+      point it at a tuner yourself. The reason is honesty &mdash; OpenWebRX picks its SDR
+      inside its own <em>Admin &rarr; SDR devices</em> UI, so anything OASIS recorded about
+      that choice described a decision it had not made and could not carry out.
     </p>
     <div class="ph">[ screenshot &mdash; OpenWebRX+ waterfall and receiver UI (not enabled on the reference box) ]</div>
-    <pre><code>python3 services/openwebrx/install.py    # installs OpenWebRX+ on :8073</code></pre>
+    <pre><code>python3 services/openwebrx/install.py    # installs OpenWebRX+ on :8073
+sudo systemctl start openwebrx          # run it (off at boot, deliberately)
+sudo systemctl stop openwebrx           # give the dongle back</code></pre>
     <div class="callout warn">
       <span class="ic">&#9888;</span>
-      <div><p><strong>The RTL-SDR feeds one consumer at a time.</strong> OpenWebRX and the <a href="aprs-feed.html">APRS SDR feed</a> both want the dongle, so starting OpenWebRX from the dashboard flips the APRS stack off (and vice-versa). This is why its dashboard card needs <a href="service-controls.html">service controls</a> enabled.</p></div>
+      <div><p><strong>The RTL-SDR feeds one consumer at a time.</strong> OpenWebRX, the <a href="aprs-feed.html">APRS SDR feed</a>, <a href="adsb.html">ADS-B</a> and the <a href="nwr.html">weather watch</a> all want a dongle, and whoever starts first keeps it. OASIS cannot see which tuner OpenWebRX took &mdash; so when you start one of its own SDR services while <code>openwebrx</code> is running, it says so and offers to stop it first. That prompt is the only place OpenWebRX still appears in the UI.</p></div>
     </div>
     <div class="callout info">
       <span class="ic">&#8505;</span>
@@ -97,8 +103,10 @@
     <div class="box"><div class="box-body"><table>
       <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
       <tbody>
-        <tr><td>Card is grey / <code>:8073</code> refuses</td><td>OpenWebRX is optional and off by default. Install it (<code>services/openwebrx/install.py</code>) and start it from the dashboard card.</td></tr>
+        <tr><td><code>:8073</code> refuses</td><td>OpenWebRX is optional and off by default. Install it (<code>services/openwebrx/install.py</code>), then <code>sudo systemctl start openwebrx</code>. There is no dashboard card to check &mdash; ask systemd: <code>systemctl is-active openwebrx</code>.</td></tr>
+        <tr><td>It starts, but shows no SDR device</td><td>Another consumer holds the dongle. <code>systemctl is-active aprs-sdr-feed dump1090-fa oasis-nwr</code> names it; stop that one, or give OpenWebRX a second dongle in its own <em>Admin &rarr; SDR devices</em>.</td></tr>
         <tr><td>Starting it killed the APRS feed</td><td>Expected &mdash; both want the one RTL-SDR. They are mutually exclusive on a single dongle.</td></tr>
+        <tr><td>It grabbed the dongle again after a reboot</td><td>Something enabled it at boot. <code>sudo systemctl disable openwebrx</code> &mdash; OASIS installs it disabled precisely so it cannot win that race.</td></tr>
       </tbody>
     </table></div></div>
 

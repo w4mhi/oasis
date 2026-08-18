@@ -24,7 +24,7 @@ class DeviceStatesTest(unittest.TestCase):
                    assignments={"adsb": "a"})
         states = hardware.device_states(inv, is_active=lambda u: u == "dump1090-fa")
         self.assertEqual(states, [{"id": "a", "label": "ADS-B dongle", "kind": "rtl-sdr",
-                                   "eligible": ["aprs", "adsb", "openwebrx", "satellites", "nwr"],
+                                   "eligible": ["aprs", "adsb", "satellites", "nwr"],
                                    "serial": "", "ptt": "", "assignee": "adsb", "running": True}])
 
     def test_includes_serial_for_usb_port_join(self):
@@ -66,9 +66,9 @@ class CanAssignTest(unittest.TestCase):
 
     def test_rtl_sdr_shared_across_services_allowed(self):
         # rtl-sdr is a shared resource: a dongle already held by adsb can still
-        # be assigned to openwebrx/aprs (advisory — §2). No holder refusal.
+        # be assigned to nwr/aprs (advisory — §2). No holder refusal.
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"adsb": "a"})
-        ok, holder = hardware.can_assign(inv, "openwebrx", "a")
+        ok, holder = hardware.can_assign(inv, "nwr", "a")
         self.assertTrue(ok)
         self.assertIsNone(holder)
         ok, holder = hardware.can_assign(inv, "aprs", "a")
@@ -105,9 +105,9 @@ class AssignReleaseTest(unittest.TestCase):
 
     def test_assign_shares_rtl_sdr_across_services(self):
         inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"adsb": "a"})
-        hardware.assign(self.dir, inv, "openwebrx", "a")
+        hardware.assign(self.dir, inv, "nwr", "a")
         reloaded = hardware.load(self.dir)
-        self.assertEqual(reloaded.assignments, {"adsb": "a", "openwebrx": "a"})
+        self.assertEqual(reloaded.assignments, {"adsb": "a", "nwr": "a"})
 
     def test_assign_raises_when_exclusive_device_held(self):
         inv = _inv(devices={"d": _dev("d", "digirig", ptt="/dev/x", alsa="hw:0,0")},
@@ -147,9 +147,9 @@ class DefaultAssignTest(unittest.TestCase):
         self.assertEqual(inv.assignments["adsb"], "a")
 
     def test_shares_rtl_sdr_already_held_by_another_service(self):
-        # rtl-sdr is shared: the lone dongle held by openwebrx is still a valid
+        # rtl-sdr is shared: the lone dongle held by nwr is still a valid
         # default for adsb — all RTL consumers converge on it out of the box.
-        inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"openwebrx": "a"})
+        inv = _inv(devices={"a": _dev("a", "rtl-sdr")}, assignments={"nwr": "a"})
         hardware.default_assign(self.dir, inv, "adsb", {"rtl-sdr"})
         self.assertEqual(inv.assignments["adsb"], "a")
 

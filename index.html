@@ -463,7 +463,7 @@ body {
 }
 
 /* ── Per-card device label (read-only; assign on Setup → Hardware) ───────── */
-/* Sits inline on the OPEN/badge line (feed/adsb/owrx/wlrf) to save a row of
+/* Sits inline on the OPEN/badge line (feed/adsb/wlrf) to save a row of
    height: `OPEN ↗ · device: xxx ···· badge`. Shrinkable (min-width:0) so a long
    dongle label ellipsises instead of pushing the badge onto a second line; the
    full name is on the element's title for hover. */
@@ -1496,23 +1496,6 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
       <span class="svc-badge" id="badge-feed">—</span>
     </div>
   </div>
-  <div class="svc-card svc-card-gated" id="card-owrx">
-    <div class="svc-card-top">
-      <div class="svc-dot" id="dot-owrx"></div>
-      <div class="svc-card-info">
-        <div class="svc-name">OpenWebRX</div>
-        <div class="svc-sub" id="sub-owrx">—</div>
-      </div>
-    </div>
-    <div class="svc-card-bottom">
-      <button class="svc-open" id="open-owrx" onclick="svcOpenClick('owrx')" disabled>OPEN ↗</button>
-      <div class="hw-assign-row" id="hwrow-owrx" hidden>
-        <span class="hw-assign-lbl">device:</span>
-        <span class="hw-assign-dev" id="hwdev-owrx">—</span>
-      </div>
-      <span class="svc-badge" id="badge-owrx">—</span>
-    </div>
-  </div>
   <div class="svc-card svc-card-gated" id="card-adsb" data-href="maps/traffic/map.html" data-target="_blank">
     <div class="svc-card-top">
       <div class="svc-dot" id="dot-adsb"></div>
@@ -1790,12 +1773,15 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 try { localStorage.removeItem('oasis_layout'); } catch (e) {}
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
+// openwebrx (:8073) is deliberately absent: OASIS no longer surfaces a card,
+// a tile or a link-out for it (3.92.0). /api/config still publishes the port for
+// anything that wants to link out on its own; nothing on this page reads it.
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
 // Port to show in svc-sub when a service is unreachable
 const SVC_PORTS = {
   gw:    () => PORTS.graywolf, winlink: () => PORTS.winlink,
   kiwix: () => PORTS.kiwix,   aprs:    () => PORTS.aprs_api,
-  webssh:() => PORTS.webssh,  owrx:    () => PORTS.openwebrx
+  webssh:() => PORTS.webssh
 };
 
 async function loadConfig() {
@@ -1987,7 +1973,6 @@ async function pollNwrAlert() {
 // data-target="_blank") on the card element — see svcOpenClick().
 const SVC_CARD_EXTERNAL_URL = {
   gw:      () => `${location.protocol}//${location.hostname}:${PORTS.graywolf}/`,
-  owrx:    () => `${location.protocol}//${location.hostname}:${PORTS.openwebrx}/`,
   kiwix:   () => `${location.protocol}//${location.hostname}:${PORTS.kiwix}/`,
   winlink: () => `${location.protocol}//${location.hostname}:${PORTS.winlink}/`,
 };
@@ -2175,7 +2160,7 @@ const SERVICES = [
   {
     id: 'kiwix', name: 'Kiwix',
     check: async () => {
-      // Status comes from systemd (same as owrx/adsb/feed) so a not-installed
+      // Status comes from systemd (same as adsb/feed) so a not-installed
       // Kiwix reads "not installed" instead of DOWN: a raw port probe throws
       // identically whether the unit is absent, stopped, or crashed — it can't
       // tell them apart. The unit being 'active' means kiwix-serve is up on :8081.
@@ -2298,22 +2283,6 @@ const SERVICES = [
     check: async () => {
       await fetch(`http://${HOST}:${PORTS.webssh}/`, { cache: 'no-store', mode: 'no-cors' });
       return { up: true, badge: 'UP', sub: `:${PORTS.webssh}`, navSub: 'operational' };
-    }
-  },
-  {
-    id: 'owrx', name: 'OpenWebRX',
-    check: async () => {
-      // The web port is cross-origin — a no-cors fetch can't read it and never
-      // throws, so it can't tell running from stopped. Status comes from systemd
-      // instead (same as adsb/feed): 'up' ONLY when the unit is actually active,
-      // so the shared-dongle dropdown unlocks while OpenWebRX is stopped.
-      const r = await fetch('/api/health/service?name=openwebrx', { cache: 'no-store' });
-      const d = await r.json().catch(() => null);   // read on every path
-      if (!r.ok || !d) return { up: false, sub: 'status error' };
-      if (d.supported === false) return { up: false, badge: 'n/a', sub: 'Linux only' };
-      if (d.active === 'active') return { up: true, badge: 'UP', sub: `:${PORTS.openwebrx}` };
-      return { up: false, badge: d.installed ? 'STOPPED' : 'n/a',
-        sub: d.installed ? 'inactive (advanced)' : 'not installed' };
     }
   },
   {
@@ -2507,16 +2476,17 @@ let _hwLast = null;   // last GET /api/hardware/devices payload — read by the
 // (card ids here are NOT the same string as the HW service name for aprs/winlink).
 // GrayWolf ('gw') is intentionally absent: it's web-admin-configured inside
 // its own UI and never opens an RTL-SDR itself (only the aprs-sdr-feed does).
-// OpenWebRX ('owrx') IS present but ADVISORY — assigning it a dongle writes
-// nothing (no apply hook); the record only lets the start-time shared-dongle
-// check know which RTL-SDR it wants. You still pick the real SDR in OpenWebRX's
-// own Admin → SDR profiles UI. The APRS SDR feed ('feed'), ADS-B ('adsb') and
-// OpenWebRX ('owrx') all share one dongle advisorily — see resolveHardwareConflict.
+// OpenWebRX is absent for a related reason and used to be here: its assignment
+// wrote nothing (no apply hook — the SDR is picked in its own Admin → SDR
+// profiles UI), so the record described a choice OASIS never made. It is not
+// managed here at all any more; the one thing that survives is the conflict
+// prompt, which asks systemd whether the unit is running rather than reading an
+// assignment (see resolveHardwareConflict).
 // Weather Radio ('nwr') is HW-backed like the rest: assigning it a dongle is
 // the whole action, because boot_start_plan starts oasis-nwr from the persisted
 // assignment. That also means no per-card power button (powerBtn skips HW-backed
 // cards) — start/stop is the HW/SRV matrix, same as ADS-B.
-const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink', feed: 'aprs', owrx: 'openwebrx',
+const HW_SERVICE_FOR_CARD = { adsb: 'adsb', wlrf: 'winlink', feed: 'aprs',
                               nwr: 'nwr' };
 
 // Device assignment now lives on the Setup page's Hardware card (detect ·
@@ -2715,7 +2685,7 @@ const GATEABLE = {
   // keying the gate on the alias hid the card even when the feature WAS
   // installed. Accept both.
   gw:    ['graywolf'],  aprs:    ['graywolf'],  feed: ['rtl-sdr-feed', 'rtl-feed'],
-  owrx:  ['openwebrx'], winlink: ['winlink'],   wlrf: ['winlink'],   gpsd: ['gps', 'gps-l76x'],
+  winlink: ['winlink'], wlrf: ['winlink'],   gpsd: ['gps', 'gps-l76x'],
   kiwix: ['kiwix'],     webssh:  ['webssh'],    fcc:  ['fcc'],       adsb: ['adsb'],
   wiki:  ['wikipedia'], rb:      ['repeaterbook'], forms: ['forms'],
   // Missing entirely used to mean "always counted" here — so a box without
@@ -2784,11 +2754,12 @@ async function unitInstalled(id) {
     if (id === 'gpsd') return d.enabled === 'enabled';
     // Otherwise require a DELIBERATE enable (or a live run) before overriding the
     // manifest gate. A unit that merely EXISTS but is disabled+inactive is NOT
-    // proof the operator set the service up via OASIS: OpenWebRX ships an apt
-    // `openwebrx.service` that can be present-but-disabled on a box where the
-    // OASIS feature was never installed — trusting "installed = unit file exists"
-    // there slipped a not-installed service past the gate and rendered it STOPPED
-    // instead of hidden. enabled-or-active still catches a service the operator
+    // proof the operator set the service up via OASIS: an apt-shipped unit
+    // (graywolf, dump1090-fa — and OpenWebRX, which is how this was found) can
+    // be present-but-disabled on a box where the OASIS feature was never
+    // installed, so trusting "installed = unit file exists" slipped a
+    // not-installed service past the gate and rendered it STOPPED instead of
+    // hidden. enabled-or-active still catches a service the operator
     // turned on outside setup (this hatch's real purpose; see the note above).
     return d.active === 'active' || d.enabled === 'enabled';
   } catch (_) { return false; }
@@ -2881,7 +2852,7 @@ function toggleShowHidden() {
 // (FCC / Maps / Repeater Book) do not.
 const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
                     winlink: 'pat', wlrf: 'pat-direwolf', kiwix: 'kiwix',
-                    webssh: 'webssh', owrx: 'openwebrx', adsb: 'dump1090-fa',
+                    webssh: 'webssh', adsb: 'dump1090-fa',
                     // The watch is an ordinary unit now, so unitInstalled() can
                     // probe it — matching the kiosk, which probes the same unit
                     // through the registry gate.
@@ -2891,11 +2862,8 @@ const SVC_UNITS = { gw: 'graywolf', aprs: 'graywolf-api', feed: 'aprs-sdr-feed',
 // card's top row (top-right, alongside the name) so it stays clear of the
 // OPEN button + status badge in the bottom row.
 function powerBtn(svcId) {
-  // HW-backed services controlled from the HW/SRV matrix get no per-card power
-  // button — EXCEPT OpenWebRX (owrx), which is self-configured (no engine unit,
-  // picks its own dongle in its own admin UI), so it stays card-controlled and
-  // is not shown in the matrix.
-  if (HW_SERVICE_FOR_CARD[svcId] && svcId !== 'owrx') return null;
+  // HW-backed services are controlled from the HW/SRV matrix, not from a card.
+  if (HW_SERVICE_FOR_CARD[svcId]) return null;
   const card = document.getElementById('card-' + svcId);
   if (!card) return null;
   let btn = card.querySelector('.svc-power');
@@ -2916,9 +2884,11 @@ function powerBtn(svcId) {
 const _pending = {};   // svcId -> deadline timestamp
 
 // Cards whose START requires an OASIS RTL-SDR assignment: they open the assigned
-// dongle directly and misbehave with none (OpenWebRX's assignment is advisory,
-// but the operator still wants START gated until a dongle is picked).
-const START_NEEDS_DEVICE = ['feed', 'adsb', 'owrx'];
+// dongle directly and misbehave with none. Only cards that HAVE an assignment
+// belong here — 'owrx' sat in this list while OpenWebRX had one, and leaving it
+// after the assignment was retired would have blocked its START forever behind a
+// "assign a dongle in Setup" message pointing at a row that no longer exists.
+const START_NEEDS_DEVICE = ['feed', 'adsb'];
 
 // The device object currently assigned to a card's HW service, or null (covers
 // both truly unassigned and a dangling assignment whose dongle was unplugged) —
@@ -2987,9 +2957,19 @@ function updatePower(svcId, state) {
 // saying why. nwr has no power button of its own (HW-backed; started from the
 // matrix), but it must still be listed HERE as the service that can be holding
 // the dongle somebody else's START wants.
-const RTL_SDR_CARDS = ['feed', 'adsb', 'owrx', 'nwr'];
-const RTL_SDR_LABEL = { feed: 'The APRS SDR feed', adsb: 'ADS-B', owrx: 'OpenWebRX',
+// OpenWebRX is NOT here — it has no assignment to compare, so it cannot take
+// part in a device-by-device check. It gets its own coarse, device-blind branch
+// in resolveHardwareConflict() instead; see OWRX_UNIT below.
+const RTL_SDR_CARDS = ['feed', 'adsb', 'nwr'];
+const RTL_SDR_LABEL = { feed: 'The APRS SDR feed', adsb: 'ADS-B',
                         nwr: 'The weather watch' };
+
+// OpenWebRX's unit. Named here rather than in SVC_UNITS because there is no
+// OpenWebRX card any more — this is the only thing on the dashboard that still
+// touches it, and it does so to protect OUR services from a tuner it may be
+// holding. /api/service still accepts the unit (server/routes/service_control.py
+// keeps it, as does the sudoers grant), so "stop it first" still works.
+const OWRX_UNIT = 'openwebrx';
 
 // Returns true if togglePower should proceed with the start now. Shows a
 // confirmation when another RTL-SDR service is running on the same dongle;
@@ -3024,6 +3004,42 @@ async function resolveHardwareConflict(svcId) {
     return false;   // abort this start; operator retries once GrayWolf is down
   }
   if (!RTL_SDR_CARDS.includes(svcId)) return true;
+
+  // OpenWebRX, coarse and device-blind (3.92.0). OASIS tracks no assignment for
+  // it, so unlike the per-device loop below there is no dongle id to compare —
+  // if the unit is up it may be holding ANY tuner, including this card's. Ask
+  // systemd at click time rather than reading page state: there is no OpenWebRX
+  // card any more, so nothing polls it. The prompt is deliberately worded as
+  // "may be" — over-asking costs one click, and the alternative is dump1090
+  // dying on usb_claim_interface with a card that goes DOWN saying nothing.
+  let owrxUp = false;
+  try {
+    const r = await fetch(`/api/health/service?name=${OWRX_UNIT}&active_only=1`, { cache: 'no-store' });
+    const d = await r.json().catch(() => null);   // read on every path — an unread
+    owrxUp = r.ok && !!d && d.active === 'active'; // body pins a /dev/shm pipe
+  } catch (e) { /* unreachable status = no prompt; the start fails on its own terms */ }
+  if (owrxUp) {
+    const stopIt = confirm(
+      `OpenWebRX is running and may be using this RTL-SDR.\n\n` +
+      `OK — stop it first (you'll need to click START again once it's stopped).\n` +
+      `Cancel — leave it running and try starting anyway.`
+    );
+    if (stopIt) {
+      try {
+        const r = await fetch('/api/service', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-OASIS-Request': '1' },
+          body: JSON.stringify({ unit: OWRX_UNIT, action: 'stop' }),
+        });
+        await r.text();                  // read on every path, then discard
+      } catch (e) { /* best-effort — pingAll below reflects what actually happened */ }
+      pingAll();
+      return false;   // abort this start; operator retries once ORX is down
+    }
+    // "Continue anyway" falls through to the per-device check below: another
+    // OASIS service may ALSO be on this dongle, and that prompt is still owed.
+  }
+
   const svcHw = (_hwLast && _hwLast.services) || {};
   const myDevice = (svcHw[HW_SERVICE_FOR_CARD[svcId]] || {}).device_id || '';
   if (!myDevice) return true;   // unassigned — let it start (fails on its own terms)

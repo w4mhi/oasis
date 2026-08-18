@@ -27,13 +27,16 @@ test('resolveHidden: a matched feature keeps a service visible without probing',
   assert.ok(!hidden.has('aprs'), 'graywolf feature → APRS visible');
 });
 
-test('resolveHidden: Pi snapshot hides only kiwix/nwr/owrx/wiki; a running-but-unlisted webssh stays counted', async () => {
-  // webssh, kiwix, openwebrx, wikipedia are NOT in features on this box
+test('resolveHidden: Pi snapshot hides only kiwix/nwr/wiki; a running-but-unlisted webssh stays counted', async () => {
+  // webssh, kiwix, wikipedia are NOT in features on this box. OpenWebRX is not
+  // in the registry at all any more (3.92.0) — it can be installed and running
+  // and OASIS still shows no tile for it, so it can never appear here.
   const features = ['adsb', 'fcc', 'graywolf', 'gps-l76x', 'repeaterbook', 'rtl-sdr-feed', 'winlink'];
-  const live = { webssh: true, gpsd: true, 'dump1090-fa': true, openwebrx: false, kiwix: false, 'aprs-sdr-feed': true };
+  const live = { webssh: true, gpsd: true, 'dump1090-fa': true, openwebrx: true, kiwix: false, 'aprs-sdr-feed': true };
   const probe = async (g) => !!live[g.unit];
   const hidden = await R.oasisResolveHidden(features, probe);
-  assert.deepStrictEqual([...hidden].sort(), ['kiwix', 'nwr', 'owrx', 'wiki']);
+  assert.deepStrictEqual([...hidden].sort(), ['kiwix', 'nwr', 'wiki']);
+  assert.ok(!R.OASIS_SERVICES.some(s => s.id === 'owrx'), 'no OpenWebRX tile in the registry');
   assert.ok(!hidden.has('webssh'), 'webssh enabled outside the manifest is still counted');
 });
 
@@ -75,8 +78,8 @@ test('sdrDotClass: a daemon service is green only while its unit runs', () => {
   const d = extra => R.sdrDotClass(Object.assign({ assigned: true, daemon: true }, extra));
   assert.strictEqual(d({ active: true }), 'inuse');
   assert.strictEqual(d({ active: false }), 'assigned', 'assigned but down stays amber');
-  // openwebrx: a daemon we cannot detect (no OASIS unit). It must NOT drift to
-  // green — "we can't tell" is not "it's working".
+  // A daemon whose unit we cannot probe must NOT drift to green — "we can't
+  // tell" is not "it's working". OpenWebRX was the case that set this rule.
   assert.strictEqual(d({ active: false, blocked: false }), 'assigned');
 });
 

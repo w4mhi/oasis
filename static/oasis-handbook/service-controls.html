@@ -79,8 +79,7 @@
     <p class="subtitle">START / STOP buttons on the dashboard &mdash; no SSH required</p>
     <p>
       By default the dashboard <em>shows</em> each companion service&rsquo;s status but
-      can&rsquo;t change it &mdash; restarting GrayWolf or switching to OpenWebRX would mean
-      SSHing in. The optional service-controls step adds <strong>START / STOP</strong>
+      can&rsquo;t change it &mdash; restarting GrayWolf or Kiwix would mean SSHing in. The optional service-controls step adds <strong>START / STOP</strong>
       buttons to the service cards so you never have to.
     </p>
     <div class="callout info">
@@ -89,10 +88,10 @@
       hardware-routed radio services &mdash; <strong>ADS-B</strong>, <strong>Winlink RF</strong>
       and the <strong>APRS SDR feed</strong> &mdash; are started and stopped by routing a
       device to them in the <strong>SRV OPS</strong> hardware console, not from their card.
-      They still need this sudoers rule; they just do not expose the button. OpenWebRX is the
-      explicit exception and keeps its card button, because it picks its own dongle in its own
-      admin UI and never appears in the matrix. See <a href="service-operations.html">Service
-      Operations</a>.</p></div>
+      They still need this sudoers rule; they just do not expose the button. OpenWebRX has
+      no card at all &mdash; OASIS stopped managing it in 3.92.0 &mdash; but the rule still
+      covers its unit, so <strong>STOP ALL</strong> and the conflict prompt can stop it.
+      See <a href="service-operations.html">Service Operations</a>.</p></div>
     </div>
     <figure class="figure">
       <img src="img/service-controls.png" alt="The dashboard service strip — each companion service with live status and START / STOP buttons" />
@@ -140,7 +139,7 @@ python3 scripts/enable-service-controls.py --disable  # remove the permission</c
     </div>
     <div class="callout info">
       <span class="ic">&#8505;</span>
-      <div><p>OpenWebRX&rsquo;s card needs this rule too: starting it there also flips the APRS stack, because the RTL-SDR can only feed one consumer at a time.</p></div>
+      <div><p>The rule covers <code>openwebrx</code> even though it has no card: when you start an OASIS SDR service while OpenWebRX is running, the dashboard offers to stop it for you, and that stop goes through this same sudoers scope.</p></div>
     </div>
 
     <h2>Which units</h2>
@@ -215,7 +214,7 @@ python3 scripts/enable-service-controls.py --disable  # remove the permission</c
       <tbody>
         <tr><td>No START / STOP buttons on the cards</td><td>Either service controls aren&rsquo;t enabled &mdash; turn them on in <a href="setup-menu.html">setup</a> &mdash; or the card is one of the three hardware-routed ones (ADS-B, Winlink RF, APRS SDR feed), which never have a power button. Use the <strong>SRV OPS</strong> matrix for those.</td></tr>
         <tr><td>START does nothing / silently fails</td><td>The sudoers scope is missing or the unit errored. Check <code>journalctl -u &lt;service&gt; -e</code>.</td></tr>
-        <tr><td>A radio service refuses to start</td><td>The RTL-SDR is held by another consumer (APRS feed, ADS-B, OpenWebRX, satellite listen). Stop the other one first &mdash; the dongle is exclusive. If you were not prompted, the two are assigned different devices on paper but sharing one in practice.</td></tr>
+        <tr><td>A radio service refuses to start</td><td>The RTL-SDR is held by another consumer (APRS feed, ADS-B, the weather watch, OpenWebRX, satellite listen). Stop the other one first &mdash; the dongle is exclusive. If you were not prompted and OpenWebRX was not running, the two are assigned different devices on paper but sharing one in practice.</td></tr>
         <tr><td>The response mentions <code>SYSTEMD_UNAVAILABLE</code></td><td>You are not on Linux. Service controls are a systemd feature; on a laptop the cards are read-only.</td></tr>
       </tbody>
     </table></div></div>

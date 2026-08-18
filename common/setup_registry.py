@@ -410,7 +410,10 @@ FEATURE_HELP = {
         "A browser SDR receiver. Install if you want to watch the spectrum "
         "and decode signals interactively rather than just run a fixed "
         "service. Optional and heavy, and it competes for the same dongle as "
-        "ADS-B and the APRS SDR feed, so only one of those runs at a time.",
+        "ADS-B and the APRS SDR feed, so only one of those runs at a time. "
+        "OASIS installs it and then leaves it alone: no card, no dongle "
+        "assignment. Start it with `sudo systemctl start openwebrx` and pick "
+        "its SDR inside its own Admin - SDR devices UI.",
     "rtl-sdr-feed":
         "Demodulates 2 m APRS from an RTL-SDR dongle and feeds it into "
         "GrayWolf, so you can receive APRS with no radio at all. Needs "
@@ -419,8 +422,8 @@ FEATURE_HELP = {
     "adsb":
         "Decodes aircraft on 1090 MHz with dump1090-fa and plots them on the "
         "traffic map. Install if you want aircraft alongside APRS. It takes "
-        "over the dongle, so starting it stops the APRS SDR feed and "
-        "OpenWebRX.",
+        "over the dongle, so starting it offers to stop the APRS SDR feed, the "
+        "weather watch or OpenWebRX first.",
     "nwr":
         "NOAA Weather Radio with SAME/EAS decode. Assigning an RTL-SDR to nwr "
         "starts an always-on watch (the oasis-nwr service): it picks the "

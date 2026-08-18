@@ -859,7 +859,6 @@
            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSrvOps();}">
         <span class="s"><span class="dot" id="dot-aprs"></span>APRS</span>
         <span class="s"><span class="dot" id="dot-adsb"></span>ADS-B</span>
-        <span class="s"><span class="dot" id="dot-owrx"></span>ORX</span>
         <span class="s"><span class="dot" id="dot-sat"></span>SAT</span>
         <span class="s"><span class="dot" id="dot-wx"></span>WX</span>
       </div>
@@ -1307,10 +1306,14 @@ fetchStats(); setInterval(fetchStats, 5000);
 // common/js/service-registry.js. Satellites is the one that is not: it has no
 // unit at all (the entry below never matched anything), and its ready state is
 // "assigned, dongle free".
+//
+// An ORX dot sat between ADS-B and SAT until 3.92.0. It could never be more than
+// hollow-or-amber: OASIS assigned it a dongle it did not configure and had no
+// unit to probe. Both the entry and its #svcbar span are gone — every service
+// left here is one OASIS actually routes.
 const SDR_SVCS = [
   { id:'aprs', hw:'aprs',       unit:'aprs-sdr-feed',  daemon:true },
   { id:'adsb', hw:'adsb',       unit:'dump1090-fa',    daemon:true },
-  { id:'owrx', hw:'openwebrx',  unit:null,             daemon:true },  // no OASIS unit → can't detect "in use"
   { id:'sat',  hw:'satellites', unit:null,             daemon:false },
   // Weather Radio. Labelled WX, not NWR, to match the alert badge and the
   // listen pill already on this screen. daemon:true is literal here — the watch
@@ -1560,10 +1563,12 @@ function renderAprsRows(list) {
 }
 // ── Services health → summary count pill (ported from dashboard_old; tiles/overlay omitted) ──
 const HOST = location.hostname;
-const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082, openwebrx: 8073 };
+// No openwebrx (:8073): OASIS stopped surfacing it in 3.92.0 — no dot, no tile,
+// no link-out. /api/config still publishes the port; nothing here reads it.
+const PORTS = { flask: 8083, graywolf: 8080, kiwix: 8081, aprs_api: 8085, webssh: 7681, winlink: 8082 };
 const SVC_PORTS = {
   gw: () => PORTS.graywolf, winlink: () => PORTS.winlink, kiwix: () => PORTS.kiwix,
-  aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh, owrx: () => PORTS.openwebrx,
+  aprs: () => PORTS.aprs_api, webssh: () => PORTS.webssh,
 };
 const _svcStates = {};
 // Active, matched, plottable NWR alert (see pollNwrAlert() below) — null when
@@ -1653,7 +1658,6 @@ const SERVICES = [
   { id:'maps', name:'Offline Maps', check: async () => { const r=await fetch('/api/health/maps',{cache:'no-store'}); const d=await r.json().catch(()=>null); if(!r.ok||!d) return {up:false,sub:'maps error'}; const n=d.count||0; return {up:true,warn:n===0,badge:n>0?'UP':'WARN',sub:n>0?`${n} map${n===1?'':'s'}`:'no maps'}; } },
   { id:'rb', name:'Repeater Book', check: async () => { const r=await fetch('static/repeaterbook/repeaterbook.csv',{method:'HEAD',cache:'no-store'}); return {up:r.ok,badge:r.ok?'UP':'DOWN',sub:r.ok?'CSV loaded':'CSV missing'}; } },
   { id:'webssh', name:'SSH Terminal', check: async () => { await fetch(`http://${HOST}:${PORTS.webssh}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.webssh}`}; } },
-  { id:'owrx', name:'OpenWebRX', check: async () => { await fetch(`http://${HOST}:${PORTS.openwebrx}/`,{cache:'no-store',mode:'no-cors'}); return {up:true,badge:'UP',sub:`:${PORTS.openwebrx}`}; } },
   // ADS-B: no web port — systemd dump1090-fa owns the RTL-SDR (same as index.html's
   // health entry, so both dashboards count it). Surfaced live elsewhere (svcbar dot,
   // flow meter); this entry just adds it to the health tally.

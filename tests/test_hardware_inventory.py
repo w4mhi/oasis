@@ -79,6 +79,33 @@ class InventoryLoadTest(unittest.TestCase):
         self.assertNotIn("adsb", inv.assignments)
         self.assertTrue(any("not in" in e for e in inv.errors))
 
+    def test_assignment_to_an_unmanaged_service_dropped_with_error(self):
+        # The upgrade path for retiring a service (openwebrx, 3.92.0). Its key
+        # survives in every field station's hardware.json, and nothing else
+        # would remove it: with no DEVICE_KIND_FOR_SERVICE entry left, the kind
+        # check above sees allowed_kinds=None and preserves the row. Kept, it
+        # would make the dongle read as claimed by something no surface can
+        # show, start or release.
+        os.makedirs(os.path.join(self.dir, "configuration"))
+        with open(os.path.join(self.dir, "configuration", "hardware.json"), "w") as f:
+            f.write('''{"devices": [{"id": "sdr-1", "kind": "rtl-sdr", "serial": "1"}],
+                        "assignments": {"adsb": "sdr-1", "openwebrx": "sdr-1"}}''')
+        inv = hardware.load(self.dir)
+        self.assertEqual(inv.assignments, {"adsb": "sdr-1"})
+        self.assertEqual(hardware.assignees(inv, "sdr-1"), ["adsb"])
+        self.assertTrue(any("unknown service" in e for e in inv.errors))
+
+    def test_dropping_an_unmanaged_service_survives_a_save(self):
+        # load() drops it in memory; the next save is what clears the file.
+        os.makedirs(os.path.join(self.dir, "configuration"))
+        path = os.path.join(self.dir, "configuration", "hardware.json")
+        with open(path, "w") as f:
+            f.write('''{"devices": [{"id": "sdr-1", "kind": "rtl-sdr", "serial": "1"}],
+                        "assignments": {"openwebrx": "sdr-1"}}''')
+        hardware.save(self.dir, hardware.load(self.dir))
+        with open(path) as f:
+            self.assertNotIn("openwebrx", f.read())
+
     def test_save_then_load_round_trips(self):
         inv = hardware.Inventory(
             devices={"sdr-adsb": {"id": "sdr-adsb", "kind": "rtl-sdr", "serial": "1090"}},

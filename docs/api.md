@@ -192,9 +192,12 @@ advisory bookkeeping; a service claims a device exclusively only when it starts.
 | POST | `/api/hardware/release` | **CSRF** | `{service}` | Unassign a service's device; stops its unit(s) first if running. |
 | POST | `/api/hardware/burn-serial` | **CSRF** | `{…}` | Burn a unique serial onto the sole connected, unclaimed RTL-SDR (`rtl_eeprom`), exclusive-access guarded. |
 
-Assignable services: `adsb`, `openwebrx`, `aprs` (all rtl-sdr), `winlink`
-(digirig / dra-pi). GrayWolf is intentionally absent (self-configured in its
-own UI).
+Assignable services: `adsb`, `aprs`, `nwr`, `satellites` (all rtl-sdr; `aprs`
+and `satellites` also take a radio port), `winlink` (digirig / dra-pi).
+GrayWolf and OpenWebRX are intentionally absent — both are self-configured in
+their own UI, so an OASIS assignment could only describe a choice it did not
+make. A service missing here is simply not in the payload: `/api/hardware/devices`
+keys its `services` map off the same table.
 
 #### Service Operations console (`/api/hardware/console`, `/route`, …)
 

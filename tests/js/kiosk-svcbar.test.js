@@ -77,8 +77,8 @@ for (const s of svcs) {
   assert.ok(dots.includes(wx.id), 'no dot element for the Weather Radio entry');
 }
 
-// The label is WX, not NWR: every other label in this bar is short (ORX for
-// OpenWebRX) and the kiosk's alert badge and listen pill already say WX.
+// The label is WX, not NWR: every other label in this bar is short and the
+// kiosk's alert badge and listen pill already say WX.
 {
   const start = src.indexOf('id="svcbar"');
   const bar = src.slice(start, src.indexOf('</div>', start));

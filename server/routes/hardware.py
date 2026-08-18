@@ -64,13 +64,7 @@ def api_hardware_devices():
     — drives the per-card device dropdown's selected value and the
     unassigned-state messaging without duplicating can_start's logic in JS.
 
-    Also reconciles default assignment
-    (specs/2026-07-15-hardware-conflict-resolution-v2-design.md §3): the three
-    RTL-SDR consumers (adsb, openwebrx, aprs) each get the first present rtl-sdr
-    automatically when unassigned — shared, since assignment is advisory — so
-    the single-dongle case needs no manual step.
-
-    Before that, every detected-but-undeclared RTL-SDR with a UNIQUE serial is
+    Every detected-but-undeclared RTL-SDR with a UNIQUE serial is
     auto-declared (not just a lone one) so it appears in the assignment
     dropdowns, which list DECLARED devices. The expensive exclusive rtl_test
     scan is gated behind a cheap lsusb presence count: it runs only when more
@@ -294,15 +288,15 @@ def api_hardware_burn_serial():
 # common/hardware.py (reroute/can_reroute/set_lock/warnings).
 
 # Column order + display labels for the matrix. Only services OASIS can actually
-# route + start/stop appear here: radio-live/RX is a future claimant, and
-# OpenWebRX is self-configured (no engine unit, picks its own dongle) so it's
-# controlled from its own service card, not the matrix.
+# route + start/stop appear here: radio-live/RX is a future claimant. OpenWebRX
+# is gone entirely (3.92.0) — it is self-configured, picks its own dongle in its
+# own admin UI, and OASIS no longer tracks an assignment for it at all.
 # nwr sits after satellites for continuity — the row has been in that position
 # since it shipped, and the order here is what the operator's eye has learned.
 # It is no longer the ad-hoc listener satellites still is: the watch is the
 # always-on oasis-nwr daemon, and the console can start and stop it.
 _CONSOLE_SERVICES = ["aprs", "adsb", "winlink", "satellites", "nwr"]
-_SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B", "openwebrx": "ORX",
+_SERVICE_DISPLAY = {"aprs": "APRS", "adsb": "ADS-B",
                     "winlink": "Winlink", "satellites": "SAT", "nwr": "NWR"}
 
 

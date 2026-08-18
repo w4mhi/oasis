@@ -15,8 +15,14 @@ create-oasis-offline.py to vendor it.
 
 By OASIS policy OpenWebRX is installed **disabled** (off at boot): it grabs the
 RTL-SDR exclusively, which the APRS SDR feed + GrayWolf also use. Start it on
-demand from the dashboard (which stops GrayWolf + the feed first); stopping it
-from the dashboard restores them.
+demand with `sudo systemctl start openwebrx`.
+
+OASIS installs it and then leaves it alone (3.92.0): no service card, no health
+tile, no dongle assignment. It picks its SDR inside its own Admin -> SDR devices
+UI, so any OASIS-side record of that choice described a decision OASIS had not
+made. What OASIS still does is evidence-based — `openwebrx` stays in
+hardware_detect.SDR_CONSUMING_UNITS, so a tuner it holds reads busy, and the
+dashboard offers to stop it before starting one of its own SDR services.
 
 Usage:
   python3 services/openwebrx/install.py
@@ -156,9 +162,12 @@ def install():
 
 def set_default_disabled():
     # OASIS policy: OpenWebRX is OFF by default (exclusive RTL-SDR use) — the
-    # operator enables it on demand from the dashboard, which stops GrayWolf +
-    # the SDR feed first. Verify the disable actually took: reporting success
-    # while ORX stays boot-enabled is how it ends up fighting for the dongle.
+    # operator starts it on demand with systemctl. OASIS does not manage it
+    # beyond this install (no card, no dongle assignment; 3.92.0), so this
+    # disable is the ONLY thing standing between a fresh install and an ORX that
+    # takes the tuner at every boot before anything else can. Verify it actually
+    # took: reporting success while ORX stays boot-enabled is how it ends up
+    # fighting for the dongle.
     _run(["sudo", "systemctl", "disable", "--now", "openwebrx"], check=False)
     state = _run(["systemctl", "is-enabled", "openwebrx.service"],
                  check=False, capture_output=True, text=True)
@@ -167,7 +176,7 @@ def set_default_disabled():
               "(`sudo systemctl disable --now openwebrx`) or it will grab the "
               "RTL-SDR at every boot.")
         return
-    _ok("openwebrx set OFF by default (enable it from the dashboard when needed).")
+    _ok("openwebrx set OFF by default (`sudo systemctl start openwebrx` when needed).")
 
 
 def verify():
@@ -195,7 +204,7 @@ def run(check_only=False):
         print(); return
 
     _info("Browser-based SDR receiver/decoder (RX only) on port 8073.")
-    _info("Off by default; start on demand from the dashboard.")
+    _info("Off by default and unmanaged: `sudo systemctl start openwebrx`, then :8073.")
     print()
 
     check_platform()
@@ -215,8 +224,10 @@ def run(check_only=False):
 
     _hr()
     print("\n  OpenWebRX install complete.")
-    _info("Start it from the OASIS dashboard (the OpenWebRX card) — it stops "
-          "GrayWolf + the APRS SDR feed first.")
-    _info("Then open http://<host>:8073/ and set Admin → SDR profiles (see SETUP.md "
+    _info("Start it yourself: sudo systemctl start openwebrx  (OASIS does not "
+          "manage it — no dashboard card, no dongle assignment).")
+    _info("Stop the APRS SDR feed / ADS-B / weather watch first if they hold the "
+          "dongle you want.")
+    _info("Then open http://<host>:8073/ and set Admin → SDR devices (see SETUP.md "
           "for recommended EmComm monitoring bands).")
     print()

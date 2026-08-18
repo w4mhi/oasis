@@ -742,9 +742,12 @@ function setupRenderHw(d) {
 // MUST mirror common/hardware.py's DEVICE_KIND_FOR_SERVICE. (aprs also accepts
 // digirig/dra-pi in the engine, but the SDR-feed path only makes sense on an
 // rtl-sdr, so this UI offers only that — same choice the dashboard made.)
+// OpenWebRX is deliberately absent (3.92.0): OASIS tracks no assignment for it,
+// because picking its dongle happens inside its own Admin -> SDR profiles UI and
+// an OASIS row could only ever describe, never control. Install it and hand it a
+// dongle by hand; a tuner it holds still reads busy everywhere that matters.
 const HW_ASSIGN_SERVICES = [
   { service: 'adsb',       label: 'ADS-B',       kinds: ['rtl-sdr'] },
-  { service: 'openwebrx',  label: 'OpenWebRX',   kinds: ['rtl-sdr'] },
   { service: 'aprs',       label: 'APRS Feed',   kinds: ['rtl-sdr'] },
   { service: 'nwr',        label: 'Weather Radio', kinds: ['rtl-sdr'] },
   { service: 'satellites', label: 'Satellites',  kinds: ['rtl-sdr', 'draws'] },
