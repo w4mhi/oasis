@@ -2117,6 +2117,12 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
 | `ppm` | `0` | Crystal correction. |
 | `watch_fips` | `[]` | County FIPS codes you care about. **Empty means everything.** |
 | `bell` | `false` | Speak matched alerts aloud. Opt-in. |
+| `bell_override_until` | `0` | Epoch seconds. Speak through tonight's quiet hours; expires by itself at the next window end. |
+
+Every one of these is set from the Weather Radio page (`/server/nwr/`): the
+channel dropdown, the *Spoken alerts* card (the bell glyph and its override
+button), and the *Your counties* card (type two letters, pick, and the chips
+show what is watched). Hand-editing the file works too, but nothing needs it.
 
 The bell is off by default and honours the station-wide quiet hours in
 `common/quiet-hours.json` (22:00 – 07:00 local by default), with an override

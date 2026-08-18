@@ -473,6 +473,122 @@ class NwrConfigRouteTest(unittest.TestCase):
         self.assertFalse(body["ok"])
         self.assertEqual(body["code"], "NWR_BAD_CONFIG")
 
+    def test_the_bell_writes_and_reads_back(self):
+        # Until the weather page grew a switch, `bell` had no production writer
+        # at all: it defaulted to False, so on every install the station never
+        # spoke and nothing could turn it on. This is that round trip.
+        on = json.loads(self.c.post("/api/nwr/config", json={"bell": True}).data)
+        self.assertTrue(on["config"]["bell"])
+        self.assertTrue(json.loads(self.c.get("/api/nwr/config").data)["config"]["bell"])
+        off = json.loads(self.c.post("/api/nwr/config", json={"bell": False}).data)
+        self.assertFalse(off["config"]["bell"])
+        self.assertFalse(json.loads(self.c.get("/api/nwr/config").data)["config"]["bell"])
+
+    def test_an_override_within_the_boundary_writes_and_reads_back(self):
+        from services.nwr.common import bell as nwr_bell
+        until = nwr_bell.override_until(datetime.datetime.now(), self.root)
+        r = json.loads(self.c.post("/api/nwr/config",
+                                   json={"bell_override_until": until}).data)
+        self.assertEqual(r["config"]["bell_override_until"], until)
+        reread = json.loads(self.c.get("/api/nwr/config").data)
+        self.assertEqual(reread["config"]["bell_override_until"], until)
+
+    def test_a_picked_county_lands_in_watch_fips_and_changes_what_matches(self):
+        # The whole point of the picker. watch_fips is what decides which
+        # alerts count as the operator's own -- an EMPTY list matches
+        # everything, which is why an unconfigured box degrades safely and why
+        # a wrong list looks exactly like a dead receiver.
+        from services.nwr.common import alerts
+        empty = json.loads(self.c.get("/api/nwr/config").data)["config"]["watch_fips"]
+        self.assertEqual(empty, [])
+        self.assertTrue(alerts.watch_match(["012345"], empty))
+
+        # The page posts the 6-digit SAME form when the operator typed one; the
+        # server stores 5, and its answer is what the page adopts.
+        r = json.loads(self.c.post("/api/nwr/config",
+                                   json={"watch_fips": ["053033"]}).data)
+        stored = r["config"]["watch_fips"]
+        self.assertEqual(stored, ["53033"])
+        self.assertTrue(alerts.watch_match(["053033"], stored))
+        self.assertTrue(alerts.watch_match(["053000"], stored),
+                        "all of Washington must reach someone watching King County")
+        self.assertFalse(alerts.watch_match(["048273"], stored))
+
+        # And the daemon reads the same file Flask just wrote.
+        self.assertEqual(settings.load(self.root)["watch_fips"], ["53033"])
+
+
+class NwrCountiesRouteTest(unittest.TestCase):
+    """The watch-list picker's source. Unfiltered and unpaginated this was 3234
+    entries and 174,986 bytes on EVERY request -- the only nwr route with no
+    clamp_limit -- on a box whose supported minimum is a Pi 3."""
+
+    TABLE = {
+        "53033": {"n": "King", "s": "WA", "lat": 47.5, "lon": -121.8},
+        "53053": {"n": "Pierce", "s": "WA", "lat": 47.0, "lon": -122.1},
+        "48273": {"n": "Kleberg", "s": "TX", "lat": 27.4, "lon": -97.7},
+    }
+
+    def setUp(self):
+        app_module.app.config["TESTING"] = True
+        self.c = csrf_client(app_module.app)
+        # counties.load() caches the real table process-wide, so the fixture
+        # goes in at the route's call site rather than through a temp root.
+        self._patch = mock.patch.object(nwr_routes.counties, "load",
+                                        return_value=self.TABLE)
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+
+    def test_the_answer_is_bounded_even_with_no_query(self):
+        body = json.loads(self.c.get("/api/nwr/counties?limit=1").data)
+        self.assertTrue(body["ok"])
+        self.assertEqual(len(body["counties"]), 1)
+        self.assertEqual(body["total"], 3)
+        self.assertTrue(body["truncated"])
+        self.assertEqual(body["limit"], 1)
+
+    def test_a_nonsense_limit_degrades_to_the_default(self):
+        # Contract §4: never a 500, and never "quietly return everything".
+        body = json.loads(self.c.get("/api/nwr/counties?limit=banana").data)
+        self.assertEqual(body["limit"], nwr_routes._COUNTIES_DEFAULT_LIMIT)
+
+    def test_an_over_sized_limit_is_capped(self):
+        body = json.loads(self.c.get("/api/nwr/counties?limit=100000").data)
+        self.assertEqual(body["limit"], nwr_routes._COUNTIES_MAX_LIMIT)
+
+    def test_the_query_filters(self):
+        body = json.loads(self.c.get("/api/nwr/counties?q=ki").data)
+        self.assertEqual([r["fips5"] for r in body["counties"]], ["53033"])
+        self.assertEqual(body["total"], 1)
+        self.assertFalse(body["truncated"])
+
+    def test_a_query_that_matches_nothing_is_an_empty_list_not_an_error(self):
+        body = json.loads(self.c.get("/api/nwr/counties?q=zzzz").data)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["counties"], [])
+        self.assertEqual(body["total"], 0)
+
+    def test_the_fips_form_names_a_stored_watch_list_in_one_request(self):
+        body = json.loads(self.c.get("/api/nwr/counties?fips=53033,048273").data)
+        self.assertEqual([r["fips5"] for r in body["counties"]], ["48273", "53033"])
+        self.assertEqual(body["unknown"], [])
+
+    def test_a_code_with_no_county_entry_comes_back_as_unknown(self):
+        # 51560 is one of the four SAME codes with no coordinates. It cannot be
+        # named or plotted, and it is still a legitimate thing to watch.
+        body = json.loads(self.c.get("/api/nwr/counties?fips=53033,51560").data)
+        self.assertEqual([r["fips5"] for r in body["counties"]], ["53033"])
+        self.assertEqual(body["unknown"], ["51560"])
+
+    def test_the_shape_never_changes(self):
+        # Contract §5: every field in every response for this endpoint.
+        keys = sorted(json.loads(self.c.get("/api/nwr/counties").data))
+        for url in ("/api/nwr/counties?q=ki", "/api/nwr/counties?q=zzzz",
+                    "/api/nwr/counties?fips=51560", "/api/nwr/counties?limit=1"):
+            self.assertEqual(sorted(json.loads(self.c.get(url).data)), keys, url)
+
 
 class NwrStreamRelayTest(unittest.TestCase):
     """The relay. Flask spawns nothing and subscribes to nothing here — the

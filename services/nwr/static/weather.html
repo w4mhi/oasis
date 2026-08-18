@@ -41,6 +41,30 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
    channel change sitting in the same red as "no audio encoder" reads far
    louder than it is. Dim, and never given the .warn class. */
 #pin { font-size: var(--fs-small); color: var(--text-dim); }
+
+/* The bell is a glyph button rather than a checkbox because it has THREE
+   states, not two: off, on, and on-but-held-silent-by-quiet-hours. A checkbox
+   can only show the first two, and the third is the one an operator most needs
+   to be able to see at 23:00. Same idiom as the satellites bell. */
+.bellbtn { background: none; border: 0; padding: 0 .2rem; line-height: 1;
+           cursor: pointer; color: var(--accent); }
+.bellbtn.off { color: var(--text-dim); }
+.bellbtn.quiet { color: var(--text-dim); opacity: .65; }
+.bellbtn[disabled] { cursor: not-allowed; }
+#bell-state { font-size: var(--fs-small); color: var(--text-dim); }
+#cty-q { width: 100%; }
+#cty-results { display: flex; flex-direction: column; align-items: flex-start;
+               gap: .2rem; margin: .35rem 0; }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chip { display: inline-flex; align-items: center; gap: .4rem;
+        border: 1px solid var(--border); border-radius: 999px;
+        padding: .15rem .2rem .15rem .55rem; font-size: var(--fs-small); }
+/* A county with no coordinates is still worth watching -- it just cannot be
+   drawn. Dashed, so the map's silence about it is never a surprise. */
+.chip.unplottable { border-style: dashed; }
+.chip button { background: none; border: 0; font: inherit; cursor: pointer;
+               color: var(--text-dim); padding: 0 .25rem; }
+.chip button:hover { color: var(--red); }
 </style>
 </head>
 <body>
@@ -68,6 +92,40 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
       <div class="row"><span id="pre"></span></div>
       <audio id="audio" controls preload="none" style="width:100%;display:none"></audio>
     </div>
+
+    <div class="card">
+      <h2>Spoken alerts</h2>
+      <p class="note">Off until you switch it on: a watch that starts talking the
+        moment you assign a dongle is a watch you turn off. On, an alert on your
+        county list is spoken aloud through the station voice. There is no
+        severity filter, on purpose - you will also hear the Required Weekly
+        Test, and that weekly announcement is the only regular proof that
+        demodulation, parsing, matching and speech all still work.</p>
+      <div class="row">
+        <button id="bell" type="button" class="bellbtn off" aria-pressed="false"></button>
+        <span id="bell-state">checking...</span>
+      </div>
+      <div class="row"><button id="ovr" type="button" class="sbtn"></button></div>
+      <div class="row"><span id="bellmsg"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>Your counties</h2>
+      <p class="note">The watch list is how you say which counties matter to you.
+        It decides what is flagged in the log, what the dashboard card counts as
+        yours, and what the bell speaks - not what is decoded; everything heard
+        is recorded either way. An empty list matches everything, which is the
+        safe default; a wrong list matches nothing and looks exactly like a dead
+        receiver.</p>
+      <div class="row">
+        <label for="cty-q">Add</label>
+        <input id="cty-q" type="search" autocomplete="off"
+               placeholder="county name, state code, or FIPS">
+      </div>
+      <div id="cty-results"></div>
+      <div id="cty-list" class="chips"></div>
+      <div class="row"><span id="ctymsg"></span></div>
+    </div>
   </div>
 
   <div class="card">
@@ -81,6 +139,15 @@ code.raw { font-size: var(--fs-micro); color: var(--text-dim); word-break: break
 </div>
 
 <script src="/common/js/nwr-card.js"></script>
+<script src="/common/js/quiet-hours.js"></script>
+<!-- For the bell GLYPHS, and only those. sat-bells.js owns the bell and
+     bell-with-slash as inline SVG because that emoji renders blank on Pi
+     Chromium, and it is loaded here rather than copied so the two bells in this
+     station cannot end up drawn differently. Its STATE model does not apply:
+     the satellites bell is per-device (which screen should this pass wake),
+     while this one is per-STATION -- it speaks through the shack's one speaker,
+     so it lives in configuration/nwr.json and every browser sees one switch. -->
+<script src="/common/js/sat-bells.js"></script>
 <script>
 'use strict';
 
@@ -127,6 +194,11 @@ const STREAM_URL = '/api/nwr/listen/stream';
 const STREAM_ERR = 'the audio stream would not open - see the status line above';
 let CHANNELS = [];
 let polling = false;   // re-entrancy guard for poll() — see Finding 7
+// The last config the server gave us. The bell and the watch list are SERVER
+// state (configuration/nwr.json, which the daemon also reads), so a click sends
+// a patch built from this and the next poll re-reads what was actually stored --
+// never a local copy that could disagree with the box the daemon is reading.
+let CFG = {};
 
 function fmtTime(epoch) {
   if (!epoch) { return '-'; }
@@ -253,6 +325,12 @@ function setMsg(text) {
 
 function renderStatus(d, nowMs) {
   const w = d.watch || {}, pre = d.preconditions || {}, cfg = d.config || {};
+  CFG = cfg;
+  // Server state, re-derived from every poll rather than latched by a click:
+  // a bell switched on from another browser lands here on its own, and so does
+  // 22:00 arriving with nobody touching anything.
+  renderBell(cfg, new Date(nowMs));
+  syncWatch(cfg);
 
   // First, because CHANNELS is what chanLabel() -- and so retuneNote() below --
   // turns a frequency into a channel name with.
@@ -396,6 +474,286 @@ function renderAlerts(d) {
   });
 }
 
+// ── The bell ────────────────────────────────────────────────────────────────
+// Two hours, one definition. The quiet window is NEVER written here: it lives in
+// common/quiet-hours.json and reaches this page through quiet-hours.js, which
+// the Python half (common/quiet_hours.py, and services/nwr/common/bell.py on top
+// of it) reads too. A second copy of "22 to 07" is how one half of a station
+// ends up silent at 06:00 while the other is chiming.
+function hhmm(hour) { return (hour < 10 ? '0' : '') + hour + ':00'; }
+function quietWindowText() {
+  return hhmm(OasisQuietHours.QUIET_FROM) + '-' + hhmm(OasisQuietHours.QUIET_TO);
+}
+
+// (config, nowMs, localHour) -> everything the bell card shows. Pure, so the
+// three states can be tested without waiting for 22:00.
+//
+// The decision itself is OasisQuietHours.state() -- the same function the
+// satellite bell and the hour bell use -- rather than a fourth reading of the
+// same rule. `bell: false` goes in as its `muted` argument because to that
+// function the two are one fact: nothing is going to sound.
+function bellView(cfg, nowMs, localHour) {
+  const on = !!(cfg && cfg.bell);
+  // Stored in SECONDS (settings.py writes an epoch int); quiet-hours.js works
+  // in milliseconds. The conversion happens here and nowhere else.
+  const until = Number((cfg && cfg.bell_override_until) || 0) * 1000;
+  const st = OasisQuietHours.state(!on, localHour, nowMs, until);
+  const end = hhmm(OasisQuietHours.QUIET_TO);
+  let text;
+  if (!on) {
+    text = 'Off - nothing is spoken aloud.';
+  } else if (st.overridden) {
+    text = 'On - speaking through quiet hours, until ' + end + '.';
+  } else if (st.quiet) {
+    text = 'On, but quiet hours (' + quietWindowText() + ') hold it silent until ' + end + '.';
+  } else {
+    text = 'On - an alert on your county list is spoken aloud. Silent '
+      + quietWindowText() + ' unless you say otherwise.';
+  }
+  return {
+    on: on, quiet: st.quiet, overridden: st.overridden, silent: st.silent,
+    // Three states, three appearances: off is a dim crossed bell, on is a
+    // ringing one, and on-but-quiet is a dimmed crossed bell that still says
+    // the switch is on. A control that looked the same in the last two would
+    // teach an operator their bell was off when it was not.
+    glyph: st.silent ? OasisBells.BELL_OFF : OasisBells.BELL_ON,
+    cls: 'bellbtn' + (!on ? ' off' : (st.silent ? ' quiet' : '')),
+    text: text,
+    title: on ? 'Matched alerts are spoken aloud. Click to switch the bell off.'
+              : 'Matched alerts are not spoken. Click to switch the bell on.',
+    ovrLabel: st.overridden ? 'Go back to quiet hours'
+                            : 'Speak through quiet hours tonight',
+    // Nothing to override while the bell is off, and a button that acts on a
+    // switch the operator can see is off is a button that reads as broken.
+    ovrShown: on,
+  };
+}
+
+// The override as a patch. It always expires by itself at the next window end,
+// so this asks quiet-hours.js for that boundary rather than inventing a
+// duration -- the same boundary bell.override_until() computes server-side,
+// which is what settings.py checks the value against.
+function overridePatch(now, active) {
+  return { bell_override_until:
+    active ? 0 : Math.floor(OasisQuietHours.overrideUntil(now) / 1000) };
+}
+
+// What a config write says for itself. `ok: false` from POST /api/nwr/config is
+// always a REFUSED write with a reason worth reading -- most sharply the 400 for
+// an override that would outlive the next quiet-hours boundary, which
+// settings.py refuses rather than silently clamping precisely so that a client
+// with a wrong clock is a visible error instead of a station that quietly
+// stopped keeping quiet hours. Showing our own words there would hide it.
+function configMsg(r, fallback) {
+  if (r && r.data && r.data.ok) { return ''; }
+  return (r && r.data && r.data.error) || fallback;
+}
+
+function setBellMsg(text) {
+  const el = $('bellmsg');
+  el.textContent = text || '';
+  el.className = text ? 'warn' : '';
+}
+
+function renderBell(cfg, now) {
+  const v = bellView(cfg, now.getTime(), now.getHours());
+  const b = $('bell');
+  b.innerHTML = v.glyph;          // a constant from sat-bells.js, never input
+  b.className = v.cls;
+  b.title = v.title;
+  b.setAttribute('aria-pressed', v.on ? 'true' : 'false');
+  $('bell-state').textContent = v.text;
+  const o = $('ovr');
+  o.style.display = v.ovrShown ? '' : 'none';
+  o.textContent = v.ovrLabel;
+}
+
+$('bell').addEventListener('click', async function () {
+  const b = $('bell');
+  b.disabled = true;
+  let r;
+  try { r = await post('/api/nwr/config', { bell: !CFG.bell }); }
+  finally { b.disabled = false; }
+  setBellMsg(configMsg(r, 'could not change the bell'));
+  poll();
+});
+
+$('ovr').addEventListener('click', async function () {
+  const o = $('ovr');
+  const now = new Date();
+  const active = OasisQuietHours.overrideActive(
+    now.getTime(), Number(CFG.bell_override_until || 0) * 1000);
+  o.disabled = true;
+  let r;
+  try { r = await post('/api/nwr/config', overridePatch(now, active)); }
+  finally { o.disabled = false; }
+  setBellMsg(configMsg(r, 'could not change the override'));
+  poll();
+});
+
+// ── The watch list ──────────────────────────────────────────────────────────
+// A station watches a handful of counties, so this is a type-and-pick, not a
+// list of 3234 to scroll. /api/nwr/counties does the narrowing server-side and
+// bounds what it sends: unpaginated it was 175 kB per request, on a Pi 3.
+let _watchSig = null;   // what the chips currently show, so a 5 s poll does not
+                        // rebuild DOM that has not changed
+let _ctySeq = 0;        // stale-answer guard: a slow early search must not paint
+                        // over a later one
+let _ctyTimer = 0;
+
+function countyLabel(row) {
+  return row.name + ', ' + row.state + ' (' + row.fips5 + ')';
+}
+
+// Four SAME codes fell out of this Gazetteer vintage -- 02201, 02232 and 02280
+// in Alaska, plus 51560 -- and marine zones were never in it. They cannot be
+// named or plotted, which is a display fact and not a reason to refuse to watch
+// them: an alert still matters when the map cannot draw it.
+function unknownLabel(fips) {
+  return fips + ' - not in the county table, so it cannot be named or plotted';
+}
+
+// What the picker offers for a query: the table's matches, plus the code itself
+// when the operator typed a bare SAME code the table does not carry. Without
+// that last line a marine zone would be unwatchable from this page.
+function pickerRows(query, data) {
+  const rows = ((data && data.counties) || []).slice();
+  const q = String(query || '').trim();
+  if (/^\d{5,6}$/.test(q)) {
+    const five = q.length === 6 ? q.slice(1) : q;   // SAME's PSSCCC -> SSCCC
+    const known = rows.filter(function (r) { return r.fips5 === five; }).length;
+    if (!known) { rows.unshift({ fips5: five, name: null, state: null }); }
+  }
+  return rows;
+}
+
+// The watch list as a config patch. De-duplicated and sorted here as well as on
+// the server so the list cannot grow a second copy of a county from a double
+// click while the first write is still in flight.
+function watchPatch(current, fips, on) {
+  const set = {};
+  (current || []).forEach(function (c) { set[String(c)] = true; });
+  if (on) { set[String(fips)] = true; } else { delete set[String(fips)]; }
+  return { watch_fips: Object.keys(set).sort() };
+}
+
+function setCtyMsg(text) {
+  const el = $('ctymsg');
+  el.textContent = text || '';
+  el.className = text ? 'warn' : '';
+}
+
+function renderWatch(rows, unknown) {
+  const box = $('cty-list');
+  box.textContent = '';
+  const chips = (rows || []).map(function (r) {
+    return { fips: r.fips5, text: countyLabel(r), known: true };
+  }).concat((unknown || []).map(function (f) {
+    return { fips: f, text: unknownLabel(f), known: false };
+  }));
+  if (!chips.length) {
+    const note = document.createElement('span');
+    note.className = 'note';
+    note.textContent = 'No counties chosen - every alert the watch hears counts as yours.';
+    box.appendChild(note);
+    return;
+  }
+  chips.forEach(function (c) {
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (c.known ? '' : ' unplottable');
+    const label = document.createElement('span');
+    label.textContent = c.text;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.textContent = '×';                       // BMP: the Pi has no emoji font
+    x.title = 'Stop watching ' + c.text;
+    x.addEventListener('click', function () { setWatch(c.fips, false); });
+    chip.appendChild(label);
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+
+// The stored list is CODES; a person reading it back needs names, which is what
+// the route's `fips` form answers -- one request for the whole list rather than
+// one per county.
+async function syncWatch(cfg) {
+  const list = (cfg && cfg.watch_fips) || [];
+  const sig = list.join(',');
+  if (sig === _watchSig) { return; }
+  _watchSig = sig;
+  if (!list.length) { renderWatch([], []); return; }
+  const r = await api('/api/nwr/counties?limit=200&fips=' + encodeURIComponent(sig));
+  if (r.data && r.data.ok) { renderWatch(r.data.counties, r.data.unknown); }
+  else {
+    // Show the bare codes rather than nothing -- the watch list is real whether
+    // or not we could name it -- and let the next poll try again.
+    _watchSig = null;
+    renderWatch([], list);
+  }
+}
+
+function renderResults(rows, query, data) {
+  const box = $('cty-results');
+  box.textContent = '';
+  if (!String(query || '').trim()) { return; }
+  if (!rows.length) {
+    const note = document.createElement('span');
+    note.className = 'note';
+    note.textContent = 'Nothing matches that.';
+    box.appendChild(note);
+    return;
+  }
+  rows.forEach(function (r) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sbtn';
+    b.textContent = r.name ? countyLabel(r) : unknownLabel(r.fips5);
+    b.addEventListener('click', function () { setWatch(r.fips5, true); });
+    box.appendChild(b);
+  });
+  if (data && data.truncated) {
+    const note = document.createElement('span');
+    note.className = 'note';
+    note.textContent = 'showing ' + (data.counties || []).length + ' of ' + data.total
+      + ' - type more to narrow it';
+    box.appendChild(note);
+  }
+}
+
+async function setWatch(fips, on) {
+  const r = await post('/api/nwr/config', watchPatch(CFG.watch_fips, fips, on));
+  setCtyMsg(configMsg(r, on ? 'could not add that county'
+                            : 'could not stop watching that county'));
+  if (r.data && r.data.ok) {
+    // The server's answer, not ours: it normalises a 6-digit code to 5 and
+    // sorts, so anything else here would disagree with what was stored.
+    CFG = r.data.config;
+    _watchSig = null;
+    await syncWatch(CFG);
+    $('cty-q').value = '';
+    renderResults([], '', null);
+  }
+  poll();
+}
+
+async function runCountyQuery(q) {
+  const seq = ++_ctySeq;
+  if (!String(q || '').trim()) { renderResults([], '', null); return; }
+  const r = await api('/api/nwr/counties?limit=25&q=' + encodeURIComponent(q));
+  if (seq !== _ctySeq) { return; }
+  if (r.data && r.data.ok) { setCtyMsg(''); renderResults(pickerRows(q, r.data), q, r.data); }
+  else { setCtyMsg('could not search the county table'); }
+}
+
+// Debounced: every keystroke is a scan of the whole table on the Pi, and the
+// answer to half a word is never the one the operator wanted.
+$('cty-q').addEventListener('input', function () {
+  const q = $('cty-q').value;
+  clearTimeout(_ctyTimer);
+  _ctyTimer = setTimeout(function () { runCountyQuery(q); }, 250);
+});
+
 async function poll() {
   // /api/nwr/status can sit behind a slow rtl_test call (Finding 6), which is
   // long enough that the 5 s setInterval tick can fire again before the
@@ -488,8 +846,17 @@ window.addEventListener('pagehide', function () {
   detachStream($('audio'));
 });
 
-poll();
-setInterval(poll, 5000);
+// The quiet window is adopted BEFORE the first paint, so the bell card never
+// shows one pair of hours and then swaps to another. Failure is silent and
+// harmless: quiet-hours.js's own fallback is the same pair the file ships with,
+// and the SERVER decides whether anything actually speaks either way.
+async function boot() {
+  const q = await api('/common/quiet-hours.json');
+  if (q.data) { OasisQuietHours.load(q.data); }
+  poll();
+  setInterval(poll, 5000);
+}
+boot();
 </script>
 </body>
 </html>

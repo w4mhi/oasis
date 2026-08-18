@@ -427,7 +427,9 @@ FEATURE_HELP = {
         "strongest of the seven 162 MHz channels and decodes official National "
         "Weather Service alerts - event code and counties - with no internet. "
         "The watch HOLDS that dongle until you release it, so nothing else can "
-        "use it meanwhile; releasing the dongle stops the watch.",
+        "use it meanwhile; releasing the dongle stops the watch. On the Weather "
+        "Radio page you choose which counties count as yours and whether alerts "
+        "are spoken aloud (off by default, silent overnight).",
     "satellites":
         "Offline satellite pass prediction with a world map, roster, "
         "downlink frequencies, and pass alerts. Install if you work the "

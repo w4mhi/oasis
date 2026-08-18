@@ -31,6 +31,10 @@ bp = Blueprint("nwr", __name__)
 _STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 _ALERTS_DEFAULT_LIMIT = 50
 _ALERTS_MAX_LIMIT = 500
+# A watch list is a handful of counties, so the picker only ever needs enough
+# rows to choose from -- 25 is a list you read, not one you scroll.
+_COUNTIES_DEFAULT_LIMIT = 25
+_COUNTIES_MAX_LIMIT = 200
 
 WATCH_BASE = f"http://127.0.0.1:{daemon.API_PORT}"
 
@@ -307,5 +311,41 @@ def api_nwr_config_set():
 
 @bp.route("/api/nwr/counties")
 def api_nwr_counties():
+    """The SAME county table, filtered and bounded — the watch-list picker.
+
+    Unpaginated this was the one nwr route with no `clamp_limit`: 3234 entries
+    and 174,986 bytes on EVERY request, on a box whose supported minimum is a
+    Pi 3, from a control that types into it. So `q` narrows (a county-name
+    prefix, a name substring, a two-letter state, "king, wa", or a FIPS prefix)
+    and `limit` bounds the answer.
+
+    `fips` asks the other question — name the codes a stored watch list already
+    holds — and takes precedence over `q`, because resolving a known set and
+    searching for an unknown one are different requests and answering half of
+    each would serve neither. Codes the table does not carry come back in
+    `unknown` rather than being dropped: the four Alaskan codes this Gazetteer
+    vintage lost, and every marine zone, cannot be named or plotted but are
+    legitimate things to watch.
+
+    §4: `counties` is always an array, ordered deterministically (prefix
+    matches, then substring matches, each by state then name), with `total`
+    counting the matches before the limit.
+    """
+    limit = clamp_limit(request.args.get("limit"), _COUNTIES_DEFAULT_LIMIT,
+                        _COUNTIES_MAX_LIMIT)
+    table = counties.load(_root())
+    asked = (request.args.get("fips") or "").strip()
+    if asked:
+        # Bounded before it reaches resolve(): the query string is operator
+        # input, and "name these 40,000 codes" is a request this route has no
+        # reason to honour.
+        codes = [c for c in asked.replace(" ", "").split(",") if c][:_COUNTIES_MAX_LIMIT]
+        rows, unknown = counties.resolve(codes, table)
+    else:
+        rows, unknown = counties.search(request.args.get("q"), table), []
     return jsonify({"ok": True,
-                    "counties": counties.all_counties(counties.load(_root()))})
+                    "counties": rows[:limit],
+                    "unknown": unknown,
+                    "total": len(rows),
+                    "truncated": len(rows) > limit,
+                    "limit": limit})

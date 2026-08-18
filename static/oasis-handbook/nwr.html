@@ -151,8 +151,9 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
 
     <h2>The Weather Radio page</h2>
     <p>
-      Reachable from the dashboard card, at <code>/server/nwr/</code>. It is a
-      <em>reader</em>: it starts nothing, and it can do exactly three things.
+      Reachable from the dashboard card, at <code>/server/nwr/</code>. It starts
+      nothing &mdash; the watch is a service, not something this page launches &mdash;
+      and it does exactly five things.
     </p>
     <ul>
       <li><strong>Pin a channel.</strong> Choosing one from the dropdown overrides the
@@ -164,6 +165,17 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
         decoding, not a second one opened for you. Up to three listeners at once.</li>
       <li><strong>Read the decode log.</strong> Received time, event, affected areas,
         expiry and the issuing station, newest first.</li>
+      <li><strong>Switch the bell on.</strong> The <em>Spoken alerts</em> card: one
+        bell glyph, off until you click it. It shows which of its three states the
+        station is in &mdash; off, speaking, or on but held silent by quiet hours
+        &mdash; and carries the button that speaks through tonight&rsquo;s quiet hours.
+        See <em>The bell</em> below.</li>
+      <li><strong>Choose your counties.</strong> The <em>Your counties</em> card: type
+        two letters of a county name, a two-letter state, <code>king, wa</code>, or a
+        FIPS code, and pick from what comes back. What is chosen shows as a row of
+        chips; the &times; on one stops watching it. A county with no coordinates is
+        drawn with a dashed border &mdash; it can be watched, it just cannot be
+        plotted.</li>
     </ul>
     <div class="callout info">
       <span class="ic">&#8505;</span>
@@ -187,6 +199,15 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
       counties matter to you. It decides what the bell speaks &mdash; not what gets
       decoded; everything heard is recorded either way.
     </p>
+    <p>
+      You set it on the <strong>Weather Radio page</strong>, in the
+      <em>Your counties</em> card: type part of a county name and pick it from the
+      list. A station watches a handful of counties, not the three thousand in the
+      table, so it is built to be typed into rather than scrolled. The four SAME
+      codes with no coordinates, and every marine zone, can still be watched by
+      typing the code itself &mdash; an alert matters whether or not the map can
+      draw it.
+    </p>
     <div class="callout warn">
       <span class="ic">&#9888;</span>
       <div><p><strong>An empty watch list matches everything.</strong> That is the safe
@@ -205,11 +226,23 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
     <h2>The bell</h2>
     <p>
       Off by default: a watch that starts talking the moment you assign a dongle is a
-      watch you turn off. Switch it on and matched alerts are spoken aloud through the
-      <a href="station-voice.html">station voice</a>, honouring the station-wide
-      <strong>quiet hours</strong> (22:00&ndash;07:00 local by default) with an override
-      that expires by itself at the next window end &mdash; a stormy night is a night, not
-      a change of policy.
+      watch you turn off. The switch is the bell glyph in the <em>Spoken alerts</em>
+      card on the <strong>Weather Radio page</strong>. Click it and matched alerts are
+      spoken aloud through the <a href="station-voice.html">station voice</a>,
+      honouring the station-wide <strong>quiet hours</strong> (22:00&ndash;07:00 local
+      by default) with an override that expires by itself at the next window end
+      &mdash; a stormy night is a night, not a change of policy.
+    </p>
+    <p>
+      The glyph has three appearances because the bell has three states, and two of
+      them are easy to confuse: <em>dim and crossed</em> is off, <em>ringing</em> is
+      speaking, and <em>dimmed and crossed but still labelled on</em> is the switch on
+      with quiet hours holding it silent until 07:00. The card says which in words as
+      well. Below it, <em>Speak through quiet hours tonight</em> sets the override; it
+      is refused &mdash; visibly, in the server&rsquo;s own words &mdash; if what the
+      browser asks for would outlive the next window end, which is how a wrong clock
+      shows up as an error instead of as a station that quietly stopped keeping quiet
+      hours.
     </p>
     <div class="callout info">
       <span class="ic">&#8505;</span>
@@ -274,7 +307,7 @@ python3 services/nwr/install.py --serve   # run the watch in the foreground (dev
         <tr><td>Audio is clear but no alert in days</td>
             <td>Most likely a quiet week. The <em>Required Weekly Test</em> is the proof the chain works &mdash; wait for it before suspecting the decoder.</td></tr>
         <tr><td>Alerts are logged but the bell never speaks</td>
-            <td>Either the bell is off, or the alert did not match your <code>watch_fips</code>, or it is quiet hours. All three are normal states, and the daemon&rsquo;s log names which one.</td></tr>
+            <td>Either the bell is off, or the alert did not match your <code>watch_fips</code>, or it is quiet hours. All three are normal states, the <em>Spoken alerts</em> card on the Weather Radio page shows which of the three you are in, and the daemon&rsquo;s log names it too.</td></tr>
         <tr><td>The audio player will not open</td>
             <td><code>409</code> = the watch is not capturing. <code>503</code> = no MP3 encoder installed (<code>ffmpeg</code>, or <code>sox</code> with <code>libsox-fmt-mp3</code>), all three stream slots busy, or the daemon is unreachable.</td></tr>
         <tr><td><code>curl &lt;pi-ip&gt;:8089/status</code> refuses the connection</td>

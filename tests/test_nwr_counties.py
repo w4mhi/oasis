@@ -76,6 +76,110 @@ class CountiesTest(unittest.TestCase):
         self.assertIsNone(d["region_type"])
 
 
+# A picker's-eye view of the table: two counties in one state, one in another,
+# and two names that share a prefix so ordering is observable.
+PICKER = {
+    "53033": {"n": "King", "s": "WA", "lat": 47.5, "lon": -121.8},
+    "53053": {"n": "Pierce", "s": "WA", "lat": 47.0, "lon": -122.1},
+    "48273": {"n": "Kleberg", "s": "TX", "lat": 27.4, "lon": -97.7},
+    "06029": {"n": "Kern", "s": "CA", "lat": 35.3, "lon": -118.7},
+    "01073": {"n": "Jefferson", "s": "AL", "lat": 33.5, "lon": -86.9},
+    "42049": {"n": "Erie", "s": "PA", "lat": 42.1, "lon": -80.1},
+}
+
+
+class SearchTest(unittest.TestCase):
+    """The watch-list picker's filter. Unfiltered, this route was 3234 entries
+    and 174,986 bytes on every request, on a box whose supported minimum is a
+    Pi 3 — and a picker types into it."""
+
+    def _fips(self, rows):
+        return [r["fips5"] for r in rows]
+
+    def test_an_empty_query_is_the_whole_table_in_all_counties_order(self):
+        self.assertEqual(counties.search("", table=PICKER),
+                         counties.all_counties(PICKER))
+        self.assertEqual(counties.search(None, table=PICKER),
+                         counties.all_counties(PICKER))
+
+    def test_a_two_letter_name_prefix_narrows_it(self):
+        rows = counties.search("ki", table=PICKER)
+        self.assertEqual(self._fips(rows), ["53033"])
+
+    def test_prefix_matches_come_before_substring_matches(self):
+        # "er" starts Erie and appears inside Jefferson, Kern, Kleberg and
+        # Pierce. Erie is in PA, which sorts LAST of those states — so a plain
+        # state-then-name sort would bury the one county the operator was
+        # obviously typing. A picker that does that is one nobody types into
+        # twice.
+        rows = counties.search("er", table=PICKER)
+        self.assertEqual(self._fips(rows)[0], "42049")
+        self.assertEqual(self._fips(rows)[1:], ["01073", "06029", "48273", "53053"],
+                         "the substring group, ordered by state then name")
+
+    def test_a_bare_state_code_is_tried_as_a_state_too(self):
+        rows = counties.search("wa", table=PICKER)
+        self.assertEqual(sorted(self._fips(rows)), ["53033", "53053"])
+
+    def test_the_comma_form_narrows_by_state(self):
+        self.assertEqual(self._fips(counties.search("k, wa", table=PICKER)),
+                         ["53033"])
+        # No name at all: the state IS the query.
+        self.assertEqual(self._fips(counties.search(", wa", table=PICKER)),
+                         ["53033", "53053"])
+
+    def test_a_fips_prefix_matches(self):
+        self.assertEqual(self._fips(counties.search("5303", table=PICKER)),
+                         ["53033"])
+
+    def test_the_query_is_case_insensitive(self):
+        self.assertEqual(counties.search("KING, WA", table=PICKER),
+                         counties.search("king, wa", table=PICKER))
+
+    def test_no_match_is_an_empty_list_not_an_error(self):
+        self.assertEqual(counties.search("zzzz", table=PICKER), [])
+
+    def test_an_absurd_query_is_truncated_rather_than_scanned(self):
+        # Nobody types 400 characters into a county picker.
+        self.assertEqual(counties.search("k" * 400, table=PICKER), [])
+
+    def test_ordering_is_deterministic(self):
+        # Contract §4: the same input always yields the same order.
+        self.assertEqual(counties.search("k", table=PICKER),
+                         counties.search("k", table=PICKER))
+
+
+class ResolveTest(unittest.TestCase):
+    """The watch list's other direction: it is STORED as codes and read back
+    as names."""
+
+    def test_codes_become_names_sorted_by_state_then_name(self):
+        rows, unknown = counties.resolve(["53053", "01073", "53033"], PICKER)
+        self.assertEqual([r["fips5"] for r in rows], ["01073", "53033", "53053"])
+        self.assertEqual(unknown, [])
+
+    def test_the_six_digit_same_form_is_accepted(self):
+        rows, unknown = counties.resolve(["053033"], PICKER)
+        self.assertEqual(rows[0]["fips5"], "53033")
+        self.assertEqual(unknown, [])
+
+    def test_duplicates_collapse(self):
+        rows, _ = counties.resolve(["53033", "053033", "53033"], PICKER)
+        self.assertEqual(len(rows), 1)
+
+    def test_a_code_with_no_entry_is_reported_not_dropped(self):
+        # 51560 is one of the four codes this Gazetteer vintage lost; marine
+        # zones were never in it. Not being able to NAME or PLOT an area is a
+        # display fact, not a reason to refuse to watch it.
+        rows, unknown = counties.resolve(["53033", "51560", "02201"], PICKER)
+        self.assertEqual([r["fips5"] for r in rows], ["53033"])
+        self.assertEqual(unknown, ["02201", "51560"])
+
+    def test_nothing_asked_is_nothing_answered(self):
+        self.assertEqual(counties.resolve([], PICKER), ([], []))
+        self.assertEqual(counties.resolve(None, PICKER), ([], []))
+
+
 class MojibakeGuardTest(unittest.TestCase):
     """Regression guard for the double-encoding bug: build-same-counties.py
     once decoded a UTF-8 Census download as latin-1 unconditionally, turning

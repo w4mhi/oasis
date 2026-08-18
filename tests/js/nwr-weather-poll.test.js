@@ -116,9 +116,17 @@ const HELPERS = ['fmtTime', 'chanLabel', 'pinPatch', 'retuneNote', 'watchLine',
                  'setMsg', 'renderStatus', 'renderUnavailable'];
 
 function buildPage(doc) {
+  // renderStatus also drives the bell card and the watch-list chips now. Both
+  // have their own harness in nwr-weather-bell.test.js, with the real
+  // quiet-hours and bell-glyph modules behind them; here they are stubs, so
+  // these tests keep being about what they were written for -- the status line,
+  // the channel pin and the audio stream.
   const preamble =
     'const $ = function (id) { return document.getElementById(id); };\n' +
     'let CHANNELS = [];\n' +
+    'let CFG = {};\n' +
+    'function renderBell() {}\n' +
+    'function syncWatch() {}\n' +
     'const STREAM_URL = ' + JSON.stringify(STREAM_URL) + ';\n';
   const body = HELPERS.map(extractPlain).join('\n');
   return new Function('document', 'nwrCardState',
@@ -652,7 +660,8 @@ test('the page reads the daemon and starts nothing', () => {
   const routes = new Set(src.match(/\/api\/nwr\/[a-z/]+/g) || []);
   assert.deepStrictEqual([...routes].sort(), [
     '/api/nwr/alerts',        // read: the decode log
-    '/api/nwr/config',        // write: the channel pin, and nothing else
+    '/api/nwr/config',        // write: the channel pin, the bell, the watch list
+    '/api/nwr/counties',      // read: the watch-list picker's source
     '/api/nwr/listen/stream', // read: the daemon's audio, relayed
     '/api/nwr/status',        // read: preconditions, config and the watch
   ], 'weather.html names an API route it has no business touching');

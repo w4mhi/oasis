@@ -1998,6 +1998,13 @@ const SVC_CARD_EXTERNAL_URL = {
 // preconditions, the decode log — and it is the only route to it, because the
 // nav link was deliberately removed.
 //
+// It is also the only place the operator can set the two things that decide
+// what this card REPORTS: the county watch list — nwrActiveEvent() only raises
+// an alert whose `matched` is true, and watch_fips is what sets that —
+// and whether alerts are spoken aloud. Both live in configuration/nwr.json and
+// are written from that page and nowhere else, so greying its OPEN out would be
+// greying out the only way to change what this card is telling you.
+//
 // So the rule that gated OPEN on health had it backwards here: the card's red
 // states (DEPS, WATCH DOWN, no dongle detected) are precisely the ones an
 // operator needs that page for, and greying the button out in them made

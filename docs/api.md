@@ -420,7 +420,7 @@ stops and tunes nothing.
 | GET | `/api/nwr/alerts` | — | `limit` (default 50, max 500) | `{alerts:[…], active:[id…], count}` from the store. `active` is the subset that has not expired — what belongs on the map right now. |
 | GET | `/api/nwr/config` | — | — | `{config}` — the stored settings with defaults filled in. |
 | POST | `/api/nwr/config` | **CSRF** | `{channel_hz?, gain?, ppm?, watch_fips?, bell?, bell_override_until?, pinned_channel?}` | Validate + persist, then ask the daemon to re-read it if the pin moved. `400 NWR_BAD_CONFIG` on invalid input. See **Retune** below. |
-| GET | `/api/nwr/counties` | — | — | The SAME county/FIPS table for the watch-list picker. |
+| GET | `/api/nwr/counties` | — | `q`, `fips`, `limit` (default 25, max 200) | The SAME county/FIPS table for the watch-list picker, **filtered and bounded**. See below. |
 | GET | `/api/nwr/listen/stream` | — | — | Live watch audio, relayed byte-for-byte from the daemon. See **Audio** below. |
 | GET | `/server/nwr/` , `/server/nwr/<file>` | — | — | The Weather Radio page (`weather.html`) and its assets. |
 
@@ -488,6 +488,37 @@ re-reads the file Flask just wrote and decides for itself.
 not ask" and "nobody answered" are different worlds. A config write with the
 daemon down still succeeds — the file is on disk either way, and losing the
 operator's choice would be the worse outcome.
+
+### Counties — `GET /api/nwr/counties`
+
+The watch-list picker's source, and the only way to turn a stored `watch_fips`
+back into names. Unfiltered this was **3234 entries and 174,986 bytes on every
+request** — the one nwr route with no `clamp_limit` — on a box whose supported
+minimum is a Pi 3, from a control that types into it.
+
+| Param | Meaning |
+|---|---|
+| `q` | Narrow: a county-name **prefix**, a name substring, a two-letter state, `king, wa`, or a FIPS prefix. Case-insensitive; truncated at 48 characters. |
+| `fips` | Comma-separated SAME codes (5- or 6-digit) to **name**, rather than search for. Takes precedence over `q`; at most 200 codes. |
+| `limit` | Default 25, max 200. |
+
+```jsonc
+{"ok": true,
+ "counties":  [{"fips5": "53033", "name": "King", "state": "WA"}],
+ "unknown":   ["51560"],   // codes with no table entry — `fips` form only, else []
+ "total":     1,           // matches before the limit
+ "truncated": false,
+ "limit":     25}
+```
+
+Ordering is deterministic (§4): **name-prefix matches first, then substring
+matches**, each by state then name. Prefix-first because a picker that answers
+`ki` with Alabama is one nobody types into twice.
+
+`unknown` is an answer, not an error. Four SAME codes have no entry in this
+Gazetteer vintage (`02201`, `02232`, `02280`, `51560`) and marine zones never
+did. They cannot be named or plotted — a display fact — and they remain
+perfectly legitimate things to put on a watch list.
 
 ### Audio — `GET /api/nwr/listen/stream`
 
