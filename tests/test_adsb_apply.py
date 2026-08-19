@@ -99,5 +99,62 @@ class ApplyGuardTest(unittest.TestCase):
         # install code). It must not raise.
         adsb.apply("/tmp/does-not-matter", {"id": "a", "kind": "rtl-sdr", "serial": "1090"})
 
+
+class Dump1090ConfigStyleTest(unittest.TestCase):
+    def test_declared_style_wins(self):
+        self.assertEqual(adsb.dump1090_config_style(_STYLE6), "6")
+        self.assertEqual(adsb.dump1090_config_style("CONFIG_STYLE=5\n"), "5")
+
+    def test_absent_style_infers_5_from_a_non_empty_options_var(self):
+        # This is the wrapper's own `if [ -z "$CONFIG_STYLE" ]` inference, and
+        # the reason a stale device token in RECEIVER_OPTIONS is dangerous.
+        self.assertEqual(
+            adsb.dump1090_config_style('RECEIVER_OPTIONS="--device 1090"\n'), "5")
+
+    def test_absent_style_infers_6_when_every_options_var_is_empty(self):
+        self.assertEqual(
+            adsb.dump1090_config_style('RECEIVER_OPTIONS=""\nNET_OPTIONS=""\n'), "6")
+
+    def test_any_of_the_four_options_vars_triggers_the_inference(self):
+        for key in ("RECEIVER_OPTIONS", "DECODER_OPTIONS", "NET_OPTIONS", "JSON_OPTIONS"):
+            with self.subTest(key=key):
+                self.assertEqual(adsb.dump1090_config_style(f'{key}="--x"\n'), "5")
+
+    def test_last_assignment_wins_as_sourcing_would(self):
+        self.assertEqual(adsb.dump1090_config_style("CONFIG_STYLE=5\nCONFIG_STYLE=6\n"), "6")
+
+
+class Dump1090OverrideActiveTest(unittest.TestCase):
+    def test_stock_env_file_has_no_override(self):
+        self.assertFalse(adsb.dump1090_override_active(_STYLE6))
+
+    def test_override_suppresses_the_pin_on_style_6(self):
+        # The whole point: the pin is written, stored, and then ignored. apply()
+        # must warn rather than report a clean win.
+        text = _STYLE6 + 'OVERRIDE_OPTIONS="--device-index 9"\n'
+        self.assertTrue(adsb.dump1090_override_active(text))
+
+    def test_empty_override_is_not_active(self):
+        self.assertFalse(adsb.dump1090_override_active(_STYLE6 + 'OVERRIDE_OPTIONS=""\n'))
+
+    def test_whitespace_only_override_is_not_active(self):
+        self.assertFalse(adsb.dump1090_override_active(_STYLE6 + 'OVERRIDE_OPTIONS="   "\n'))
+
+    def test_override_is_ignored_under_style_5(self):
+        # Style 5 builds the command line from the *_OPTIONS vars, so
+        # OVERRIDE_OPTIONS never reaches the wrapper and the pin is not
+        # suppressed by it.
+        text = 'CONFIG_STYLE=5\nOVERRIDE_OPTIONS="--device-index 9"\n'
+        self.assertFalse(adsb.dump1090_override_active(text))
+
+    def test_detection_does_not_modify_the_env_text(self):
+        text = _STYLE6 + 'OVERRIDE_OPTIONS="--device-index 9"\n'
+        before = text
+        adsb.dump1090_override_active(text)
+        self.assertEqual(text, before)
+        # and the writer still pins normally — warning is advisory, not a veto
+        self.assertIn("RECEIVER_SERIAL=1090", adsb.dump1090_env_text(text, "1090"))
+
+
 if __name__ == "__main__":
     unittest.main()

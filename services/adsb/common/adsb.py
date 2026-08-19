@@ -496,6 +496,50 @@ _RECEIVER_SERIAL_RE  = re.compile(r'\s*RECEIVER_SERIAL\s*=.*$')
 _RECEIVER_OPTIONS_RE = re.compile(r'\s*RECEIVER_OPTIONS\s*=\s*"?(.*?)"?\s*$')
 _DEVICE_TOKEN_RE     = re.compile(r'--device(-index)?\s+\S+')
 
+# The variables whose presence makes start-dump1090-fa infer style 5 when
+# CONFIG_STYLE is absent -- see its own `if [ -z "$CONFIG_STYLE" ]` block.
+_DUMP1090_OPTION_KEYS = ("RECEIVER_OPTIONS", "DECODER_OPTIONS", "NET_OPTIONS",
+                         "JSON_OPTIONS")
+
+
+def _dump1090_env_value(text, key):
+    """Pure: the value of a shell assignment in env-file `text`, or None when the
+    key is absent. Last assignment wins, as sourcing the file would."""
+    rx = re.compile(rf'^\s*{key}\s*=\s*"?(.*?)"?\s*$')
+    value = None
+    for ln in text.splitlines():
+        m = rx.match(ln)
+        if m:
+            value = m.group(1)
+    return value
+
+
+def dump1090_config_style(text):
+    """Pure: the config style start-dump1090-fa will use for this env-file -- the
+    declared CONFIG_STYLE, else the wrapper's own inference from the *_OPTIONS
+    variables."""
+    declared = (_dump1090_env_value(text, "CONFIG_STYLE") or "").strip()
+    if declared:
+        return declared
+    return "5" if any((_dump1090_env_value(text, k) or "").strip()
+                      for k in _DUMP1090_OPTION_KEYS) else "6"
+
+
+def dump1090_override_active(text):
+    """Pure: True when OVERRIDE_OPTIONS will suppress the dongle pin.
+
+    OVERRIDE_OPTIONS replaces the entire assembled command line, so a pin written
+    into RECEIVER_SERIAL is accepted, stored, and then ignored -- the same silent
+    shape as the RECEIVER_OPTIONS bug dump1090_env_text() already guards against.
+    That is why apply() warns rather than reporting a clean win: a binding that
+    cannot take effect must say so.
+
+    The wrapper honours OVERRIDE_OPTIONS only outside style 5, where the
+    *_OPTIONS variables win instead."""
+    if dump1090_config_style(text) == "5":
+        return False
+    return bool((_dump1090_env_value(text, "OVERRIDE_OPTIONS") or "").strip())
+
 
 def dump1090_env_text(existing, serial):
     """Pure: DUMP1090_ENV_FILE text with the dongle pinned to `serial` (or
@@ -545,7 +589,10 @@ def apply(repo_root, device):
     After this runs, dump1090-fa must be restarted for the pin to take effect,
     and the check that matters is the process argv (`--device-index <serial>` in
     /proc/<pid>/cmdline) — never the env-file, which can hold a value the start
-    script ignores."""
+    script ignores.
+
+    OVERRIDE_OPTIONS is reported, not worked around: it replaces the whole
+    command line, so the pin cannot take effect while it is set."""
     if sys.platform != "linux":
         return
     serial = (device or {}).get("serial") or ""
@@ -562,6 +609,10 @@ def apply(repo_root, device):
         _warn(f"{DUMP1090_ENV_FILE} not present — dump1090-fa not installed yet; "
               "skipping device binding (re-assign after install).")
         return
+    if dump1090_override_active(existing):
+        _warn(f"OVERRIDE_OPTIONS is set in {DUMP1090_ENV_FILE} — it replaces the "
+              "whole command line, so dump1090-fa will IGNORE the assigned dongle "
+              "until that line is cleared.")
     new_text = dump1090_env_text(existing, serial)
     # Reuse the exact sudo-tee Popen pattern from _write_api_unit above:
     proc = subprocess.Popen(
