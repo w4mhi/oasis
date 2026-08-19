@@ -235,7 +235,10 @@ class ServiceTest(_Base):
 
 
 class FileTest(_Base):
-    _KEYS = {"ok", "key", "exists", "callsign_set", "password_set"}
+    # username_set joined the shape when GrayWolf credentials were surfaced in
+    # setup: graywolf_api needs BOTH halves reported, because the installer stubs
+    # the file with username AND password empty, so "exists" proves nothing.
+    _KEYS = {"ok", "key", "exists", "callsign_set", "password_set", "username_set"}
 
     def test_missing_config_is_ok_true(self):
         with mock.patch("os.path.isfile", return_value=False):
@@ -272,6 +275,38 @@ class FileTest(_Base):
         self.assertIs(d["ok"], True)
         self.assertIs(d["exists"], True)
         self.assertIsNone(d["password_set"], "unreadable is unknown, not false")
+
+    def test_configured_graywolf_reports_booleans_never_values(self):
+        cfg = json.dumps({"base_url": "http://127.0.0.1:8080", "username": "op",
+                          "password": "s3cret", "send_path": "both"})
+        with mock.patch("os.path.isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=cfg)):
+            d = self.c.get("/api/health/file?key=graywolf_api").get_json()
+        self.assertIs(d["username_set"], True)
+        self.assertIs(d["password_set"], True)
+        self.assertNotIn("s3cret", json.dumps(d), "secrets never leave as values")
+        self.assertNotIn("op", json.dumps(d), "the username is not returned either")
+
+    def test_stubbed_graywolf_config_reads_as_NOT_configured(self):
+        """The exact state the 2026-08-16 redeploy left on both Pis: the file is
+        present, so `exists` is True, and broadcasting is nevertheless off. If
+        this ever reports configured, the setup screen goes back to lying."""
+        cfg = json.dumps({"base_url": "http://127.0.0.1:8080", "username": "",
+                          "password": "", "send_path": "both"})
+        with mock.patch("os.path.isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=cfg)):
+            d = self.c.get("/api/health/file?key=graywolf_api").get_json()
+        self.assertIs(d["exists"], True)
+        self.assertIs(d["username_set"], False)
+        self.assertIs(d["password_set"], False)
+
+    def test_whitespace_only_graywolf_credential_is_not_set(self):
+        cfg = json.dumps({"username": "  ", "password": "\t"})
+        with mock.patch("os.path.isfile", return_value=True), \
+             mock.patch("builtins.open", mock.mock_open(read_data=cfg)):
+            d = self.c.get("/api/health/file?key=graywolf_api").get_json()
+        self.assertIs(d["username_set"], False)
+        self.assertIs(d["password_set"], False)
 
     def test_non_pat_key_still_carries_every_field(self):
         with mock.patch("os.path.isfile", return_value=True):

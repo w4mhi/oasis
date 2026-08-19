@@ -489,6 +489,11 @@ def _health_paths():
     return {
         "rtl_blacklist": "/etc/modprobe.d/rtlsdr-blacklist.conf",
         "pat_config":    _pat_config_path(),
+        # The GrayWolf Management API login. Setup surfaces it the same way it
+        # surfaces the Winlink password, so the same booleans-only probe serves
+        # both — the operator needs to know a credential IS set without the
+        # server ever handing one back.
+        "graywolf_api":  _graywolf_api_config_path(),
     }
 
 
@@ -507,7 +512,7 @@ def api_health_file():
     # §5: these two were added only for an existing, readable pat_config, so
     # "no Winlink password" and "not a pat_config" and "the file is corrupt"
     # were all the same absent key. null means unknown; false means we looked.
-    callsign_set = password_set = None
+    callsign_set = password_set = username_set = None
     if key == "pat_config" and exists:
         try:
             import json as _json
@@ -517,11 +522,40 @@ def api_health_file():
             password_set = bool(cfg.get("secure_login_password"))
         except Exception:
             pass
+    # graywolf_api needs BOTH halves reported: the installer stubs the file with
+    # empty username AND password (services/graywolf/common/graywolf.py
+    # _provision_api_config), so "the file exists" says nothing about whether
+    # broadcasting can work. Only these two booleans do.
+    elif key == "graywolf_api" and exists:
+        try:
+            import json as _json
+            with open(path) as fh:
+                cfg = _json.load(fh)
+            username_set = bool((cfg.get("username") or "").strip())
+            password_set = bool((cfg.get("password") or "").strip())
+        except Exception:
+            pass
     # §2: `ok` was `exists`, so a correct report of "not configured yet" read as
     # a failed request. §10: built inline — this was `jsonify(info)`, one of the
     # returns whose shape no reviewer and no gate could see.
     return jsonify({"ok": True, "key": key, "exists": exists,
-                    "callsign_set": callsign_set, "password_set": password_set})
+                    "callsign_set": callsign_set, "password_set": password_set,
+                    "username_set": username_set})
+
+
+def _graywolf_api_config_path():
+    """configuration/graywolf_api.json under the running suite root.
+
+    SUITE_ROOT is imported late, as everywhere else in this module: importing
+    `app` at module scope would be a circular import (app registers this
+    blueprint). Returns "" when that import fails, which `api_health_file` then
+    reports as an unknown key rather than probing some wrong path."""
+    try:
+        from app import SUITE_ROOT
+        from common import config_paths
+        return config_paths.graywolf_api_json(SUITE_ROOT)
+    except Exception:
+        return ""
 
 
 def _pat_config_path():

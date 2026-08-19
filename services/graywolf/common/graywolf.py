@@ -41,8 +41,24 @@ API_PORT = 8085
 
 
 def removal_record(repo_root=None):
-    """Teardown record for the graywolf feature (see common/removal.py)."""
-    return {"services": [SERVICE, API_SERVICE]}
+    """Teardown record for the graywolf feature (see common/removal.py), plus the
+    operator config the install stubbed: configuration/graywolf_api.json holds the
+    GRAYWOLF WEB-UI PASSWORD, so a factory reset must delete it — a credential is
+    not "kept data". Same rule, and the same reasoning, as Pat's config.json in
+    services/winlink.removal_record.
+
+    DELETED, never blanked. `_provision_api_config` returns early when the file
+    exists, so a blanked file is one every future install skips — the box would
+    sit on empty credentials with the broadcaster silently disabled, forever.
+    Removing the file restores stub-on-next-install.
+
+    `repo_root` is optional only to keep the signature uniform across removal
+    records; the loader always passes it (common/setup_registry._removal_record),
+    and without it there is no configuration/ to point at."""
+    record = {"services": [SERVICE, API_SERVICE]}
+    if repo_root:
+        record["files"] = [config_paths.graywolf_api_json(repo_root)]
+    return record
 
 ARCH_MAP = {
     "aarch64": "arm64",

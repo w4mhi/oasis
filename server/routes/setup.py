@@ -275,6 +275,45 @@ def _setup_write_station(payload):
     atomic_json.write_json(dst, body)
 
 
+def _setup_write_graywolf(payload):
+    """Persist the GrayWolf Management API login from the setup form.
+
+    Read-modify-write, so `base_url` and `send_path` survive — this form owns
+    only the two credential fields, exactly as _setup_write_station owns only
+    the station fields and preserves `aprs_freq`.
+
+    An EMPTY password means "unchanged", never "clear it". The form sends '' when
+    the operator has not pressed Change password (it renders a masked placeholder
+    instead of the real value), so treating empty as a clear would wipe the
+    credential on every unrelated save. Clearing is what the factory reset is
+    for — services/graywolf/common/graywolf.removal_record deletes the file.
+
+    No-op when the file does not exist yet: the graywolf installer stubs it
+    (_provision_api_config), and writing one here would pre-empt that stub with a
+    file carrying no base_url."""
+    gw = payload.get("graywolf") or {}
+    username = (gw.get("username") or "").strip()
+    password = gw.get("password") or ""
+    if not username and not password:
+        return
+    dst = config_paths.graywolf_api_json(SUITE_ROOT)
+    if not os.path.isfile(dst):
+        return
+    try:
+        existing = atomic_json.read_json(dst, strict=True)
+    except ValueError:
+        raise ValueError(
+            "configuration/graywolf_api.json exists but is not valid JSON — refusing "
+            "to overwrite it. Fix or remove the file, then save again."
+        ) from None
+    body = dict(existing)
+    if username:
+        body["username"] = username
+    if password:
+        body["password"] = password
+    atomic_json.write_json(dst, body)
+
+
 def _setup_pat_password_set():
     path = _health_paths().get("pat_config")
     if not path or not os.path.isfile(path):
@@ -620,6 +659,7 @@ def _setup_run_job(job_id, plan_obj, payload, uninstall_ordered=None):
     )
     try:
         _setup_write_station(payload or {})
+        _setup_write_graywolf(payload or {})
     except Exception as exc:
         blocker = {
             "feature": "station",

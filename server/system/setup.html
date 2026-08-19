@@ -218,6 +218,19 @@
       <input class="setup-input" id="setupWinlinkLocator" placeholder="EM95">
       <div class="setup-kv" id="setupStationState"></div>
     </div>
+    <div class="setup-box" id="graywolf-api">
+      <h3>GrayWolf API</h3>
+      <div class="setup-kv">The GrayWolf web-UI login, so OASIS can broadcast map
+        warnings as APRS object beacons. GrayWolf itself runs without this.</div>
+      <div class="setup-kv">GrayWolf username</div>
+      <input class="setup-input" id="setupGraywolfUsername" placeholder="GrayWolf web-UI user">
+      <div class="setup-kv">GrayWolf password</div>
+      <input class="setup-input" id="setupGraywolfPassword" type="password" placeholder="GrayWolf web-UI password">
+      <div class="setup-row" style="margin:.35rem 0 .2rem;">
+        <button class="setup-btn" id="setupGraywolfPasswordChange" type="button" style="display:none;">Change password</button>
+      </div>
+      <div class="setup-kv" id="setupGraywolfState"></div>
+    </div>
     <div class="setup-box">
       <h3>Wi-Fi (Final Phase)</h3>
       <div class="setup-kv">Wi-Fi mode</div>
@@ -287,6 +300,8 @@ let setupPollTimer = null;
 let setupAutoSelected = false;
 let setupWinlinkPasswordHasExisting = false;
 let setupWinlinkPasswordChanged = false;
+let setupGraywolfPasswordHasExisting = false;
+let setupGraywolfPasswordChanged = false;
 
 const SETUP_FEATURE_ALIASES = {
   'graywolf-api': 'graywolf',
@@ -358,6 +373,13 @@ function setupPayload() {
       lat: Number.isFinite(lat) ? lat : null,
       lon: Number.isFinite(lon) ? lon : null,
     },
+    graywolf: {
+      username: (document.getElementById('setupGraywolfUsername').value || '').trim(),
+      // '' means "unchanged" — the server never treats an empty password as a
+      // clear, so a save that isn't about GrayWolf can't wipe the credential.
+      password: setupGraywolfPasswordHasExisting && !setupGraywolfPasswordChanged
+                ? '' : (document.getElementById('setupGraywolfPassword').value || ''),
+    },
     winlink: {
       callsign: (document.getElementById('setupStationCallsign').value || '').trim().toUpperCase(),
       password: winPw,
@@ -392,6 +414,17 @@ function setupEnableWinlinkPasswordEdit() {
   pw.placeholder = 'Enter new Winlink password';
   pw.focus();
   st.textContent = 'Winlink password: editing (will update on next run)';
+}
+
+function setupEnableGraywolfPasswordEdit() {
+  const pw = document.getElementById('setupGraywolfPassword');
+  const st = document.getElementById('setupGraywolfState');
+  setupGraywolfPasswordChanged = true;
+  pw.disabled = false;
+  pw.value = '';
+  pw.placeholder = 'Enter new GrayWolf password';
+  pw.focus();
+  st.textContent = 'GrayWolf password: editing (will update on next run)';
 }
 
 // ── Feature tooltips ────────────────────────────────────────────────────────
@@ -488,6 +521,45 @@ async function setupLoadExistingConfig() {
     }
   } catch (e) {
     winState.textContent = `Winlink config check failed: ${e.message}`;
+  }
+
+  // GrayWolf API credentials. The installer stubs the file with BOTH fields
+  // empty, so "exists" proves nothing — only username_set/password_set do. This
+  // is the one screen an operator looks at, so when the credential is missing it
+  // says what that costs rather than just reporting a blank field: a bundle
+  // redeploy replaced a working config with the stub on 2026-08-16 and nothing
+  // anywhere said broadcasting had stopped.
+  try {
+    const g = await jget('/api/health/file?key=graywolf_api');
+    const gwState = document.getElementById('setupGraywolfState');
+    const gwUser = document.getElementById('setupGraywolfUsername');
+    const gwPw = document.getElementById('setupGraywolfPassword');
+    const gwBtn = document.getElementById('setupGraywolfPasswordChange');
+    setupGraywolfPasswordHasExisting = !!(g && g.exists && g.password_set);
+    setupGraywolfPasswordChanged = false;
+    if (setupGraywolfPasswordHasExisting) {
+      gwPw.value = '********';
+      gwPw.disabled = true;
+      gwBtn.style.display = '';
+      // The endpoint reports booleans, never values, so the username cannot be
+      // prefilled. Blank means "keep what is stored" — say that in the field
+      // rather than let it read as "no username set".
+      gwUser.placeholder = g.username_set ? '(set - leave blank to keep)' : 'GrayWolf web-UI user';
+    } else {
+      gwPw.value = '';
+      gwPw.disabled = false;
+      gwBtn.style.display = 'none';
+    }
+    if (!g || !g.exists) {
+      gwState.textContent = 'GrayWolf API config not found yet (install GrayWolf first).';
+    } else if (g.username_set && g.password_set) {
+      gwState.textContent = 'GrayWolf API: credentials set (password masked). APRS warning broadcast is available.';
+    } else {
+      gwState.textContent = 'GrayWolf API: credentials not set - APRS warning broadcast is OFF.';
+    }
+  } catch (e) {
+    document.getElementById('setupGraywolfState').textContent =
+      `GrayWolf API config check failed: ${e.message}`;
   }
 }
 
@@ -1256,6 +1328,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupFactoryReset').addEventListener('click', setupFactoryReset);
   document.getElementById('setupWifiMode').addEventListener('change', setupWifiWarnRefresh);
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
+  document.getElementById('setupGraywolfPasswordChange').addEventListener('click', setupEnableGraywolfPasswordEdit);
 
   setupAutoSelectInstalledFeatures();
   setupWireAutostartExclusive();
