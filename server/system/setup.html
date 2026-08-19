@@ -228,7 +228,9 @@
       <input class="setup-input" id="setupGraywolfPassword" type="password" placeholder="GrayWolf web-UI password">
       <div class="setup-row" style="margin:.35rem 0 .2rem;">
         <button class="setup-btn" id="setupGraywolfPasswordChange" type="button" style="display:none;">Change password</button>
+        <button class="setup-btn primary" id="setupGraywolfSave" type="button">Save login</button>
       </div>
+      <div class="setup-kv" id="setupGraywolfMsg"></div>
       <div class="setup-kv" id="setupGraywolfState"></div>
     </div>
     <div class="setup-box">
@@ -1322,6 +1324,38 @@ async function aprsFreqApply() {
   }
 }
 
+async function setupGraywolfSave() {
+  const user = (document.getElementById('setupGraywolfUsername').value || '').trim();
+  const pwEl = document.getElementById('setupGraywolfPassword');
+  const btn = document.getElementById('setupGraywolfSave');
+  const msg = document.getElementById('setupGraywolfMsg');
+  // Same rule as the full run: blank password means UNCHANGED, never "clear it",
+  // so a save meant for the username cannot wipe a working credential.
+  const pw = (setupGraywolfPasswordHasExisting && !setupGraywolfPasswordChanged)
+    ? '' : (pwEl.value || '');
+  if (!user && !pw) {
+    msg.style.color = '';
+    msg.textContent = 'Enter a username or password first.';
+    return;
+  }
+  btn.disabled = true;
+  msg.style.color = '';
+  msg.textContent = 'Saving…';
+  const { ok, data } = await jpost('/api/setup/graywolf-credentials', { username: user, password: pw });
+  btn.disabled = false;
+  if (!ok) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Error: ' + (data.error || 'unknown');
+    return;
+  }
+  msg.style.color = '';
+  msg.textContent = data.message || 'Saved.';
+  // Re-read config and re-run the login probe, so the line below this one says
+  // whether the credential actually authenticates rather than merely that it
+  // was stored.
+  await setupLoadExistingConfig();
+}
+
 function initSetupOrchestrator() {
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
@@ -1340,6 +1374,7 @@ function initSetupOrchestrator() {
   document.getElementById('setupWifiMode').addEventListener('change', setupWifiWarnRefresh);
   document.getElementById('setupWinlinkPasswordChange').addEventListener('click', setupEnableWinlinkPasswordEdit);
   document.getElementById('setupGraywolfPasswordChange').addEventListener('click', setupEnableGraywolfPasswordEdit);
+  document.getElementById('setupGraywolfSave').addEventListener('click', setupGraywolfSave);
 
   setupAutoSelectInstalledFeatures();
   setupWireAutostartExclusive();

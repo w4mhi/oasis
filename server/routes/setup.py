@@ -864,6 +864,54 @@ def api_setup_hardware_detect():
     })
 
 
+@bp.route("/api/setup/graywolf-credentials", methods=["POST"])
+def api_setup_graywolf_credentials():
+    """Save ONLY the GrayWolf Management API login.
+
+    Until this existed the credentials could be written only by "Run selected",
+    which fires the whole install plan -- so setting a password meant unticking
+    the default features and watching an install log, and a field with no save
+    control simply read as broken. Same targeted-save shape as
+    POST /api/aprs/frequency.
+
+    Reuses _setup_write_graywolf so the empty-password-means-UNCHANGED rule has
+    exactly one implementation; that function is also what the full run calls.
+
+    One deliberate difference from it: _setup_write_graywolf returns silently
+    when the file is absent, which is right inside a plan (the graywolf installer
+    stubs it moments later) and wrong here -- a save button that reports success
+    while writing nothing is the same silence this whole area is being fixed for.
+    So the absent file is checked first and answered explicitly.
+    """
+    if request.headers.get("X-OASIS-Request") != "1":
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    if not username and not password:
+        return jsonify({"ok": False, "error": "nothing to save"}), 400
+
+    dst = config_paths.graywolf_api_json(SUITE_ROOT)
+    if not os.path.isfile(dst):
+        return jsonify({"ok": False, "error": (
+            "configuration/graywolf_api.json does not exist yet — install GrayWolf "
+            "first; its installer creates the file this login is stored in.")}), 400
+
+    try:
+        _setup_write_graywolf({"graywolf": {"username": username,
+                                            "password": password}})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"could not save the login: {exc}"}), 500
+
+    # What was actually written, so the UI does not claim more than happened.
+    saved = [k for k, v in (("username", username), ("password", password)) if v]
+    return jsonify({"ok": True, "saved": saved,
+                    "message": "Login saved — checking it with GrayWolf…"}), 200
+
+
 @bp.route("/api/setup/plan", methods=["POST"])
 def api_setup_plan():
     if request.headers.get("X-OASIS-Request") != "1":
