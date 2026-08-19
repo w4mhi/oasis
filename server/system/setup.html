@@ -562,9 +562,20 @@ async function setupLoadExistingConfig() {
       gwState.textContent = 'GrayWolf API: credentials set - checking the login with GrayWolf...';
       try {
         const p = await jget('/api/aprs/broadcast-probe');
-        gwState.textContent = (p && p.detail)
-          ? 'GrayWolf API: ' + p.detail
-          : 'GrayWolf API: credentials set, but the login could not be verified.';
+        // jget returns the parsed body without checking the status, so an /api
+        // error arrives here as a normal object -- app.py's handler wraps every
+        // /api/* failure as {ok:false, error, code}. Honour that envelope the
+        // way setupRun() does; reporting "could not be verified" over a server
+        // that said NOT_FOUND throws away the one useful fact in the response.
+        if (p && p.ok === false) {
+          gwState.textContent = 'GrayWolf API: login check failed - '
+            + (p.error || 'unknown error') + (p.code ? ' [' + p.code + ']' : '');
+        } else if (p && p.detail) {
+          gwState.textContent = 'GrayWolf API: ' + p.detail;
+        } else {
+          gwState.textContent = 'GrayWolf API: credentials set, but /api/aprs/broadcast-probe '
+            + 'returned no result - is this build current, and was Flask restarted?';
+        }
       } catch (e) {
         gwState.textContent = 'GrayWolf API: credentials set, but the login check could not run: ' + e.message;
       }
