@@ -53,6 +53,7 @@
 <script src="/server/satellites/sat-transport.js"></script>
 <script src="/server/satellites/sat-denoise.js"></script>
 <script src="/common/js/sat-listen.js"></script>
+<script src="/common/js/password-reveal.js"></script>
 <link rel="stylesheet" href="/common/css/fonts.css">
 <link rel="stylesheet" href="/common/css/wifi-pill.css">
 <link rel="stylesheet" href="/common/css/sat-detail.css">
@@ -3455,6 +3456,8 @@ function showWifiConnectForm(row, net) {
     : '<div class="wifi-msg err">Open networks aren’t supported — choose a secured network.</div>' +
       '<div class="wifi-connect-row"><button class="wifi-btn" id="wifi-cancel">Close</button></div>';
   row.insertAdjacentElement('afterend', form);
+  // Built by innerHTML above, so it cannot be decorated at load.
+  if (window.PasswordReveal) PasswordReveal.initAll(form);
   const cancel = form.querySelector('#wifi-cancel');
   if (cancel) cancel.onclick = () => form.remove();
   const go = form.querySelector('#wifi-go');

@@ -290,6 +290,7 @@
   </div>
 </div>
 </div>
+<script src="/common/js/password-reveal.js"></script>
 <script>
 'use strict';
 
@@ -1357,6 +1358,8 @@ async function setupGraywolfSave() {
 }
 
 function initSetupOrchestrator() {
+  // Winlink, GrayWolf and Wi-Fi keys are all typed blind otherwise.
+  if (window.PasswordReveal) PasswordReveal.initAll();
   const webssh = document.getElementById('setupWebssh');
   webssh.href = `http://${HOST}:${PORTS.webssh}/`;
   document.getElementById('setupRefreshHw').addEventListener('click', setupDetectHardware);

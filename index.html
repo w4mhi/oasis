@@ -1231,6 +1231,7 @@ th.aprs-col-filterable.filter-open .aprs-col-inp { display: block; }
 <script src="/common/js/wifi-pill.js"></script>
 <script src="/common/js/freshness.js"></script>
 <script src="/common/js/quiet-hours.js"></script>
+<script src="/common/js/password-reveal.js"></script>
 </head>
 <body>
 
@@ -4342,6 +4343,8 @@ function showWifiConnectForm(row, net) {
     : '<div class="wifi-msg err">Open networks aren’t supported — choose a secured network.</div>' +
       '<div class="wifi-connect-row"><button class="wifi-btn" id="wifi-cancel">Close</button></div>';
   row.insertAdjacentElement('afterend', form);
+  // Built by innerHTML above, so it cannot be decorated at load.
+  if (window.PasswordReveal) PasswordReveal.initAll(form);
 
   const cancel = form.querySelector('#wifi-cancel');
   if (cancel) cancel.onclick = () => form.remove();
