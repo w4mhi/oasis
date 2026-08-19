@@ -68,6 +68,27 @@ class GraywolfClient:
             raise GraywolfError(f"{method} {path}: {e}")
 
     # ── public API ───────────────────────────────────────────────────────────
+    def check_auth(self):
+        """Probe: True when THESE credentials actually authenticate. Never raises.
+
+        Forces a fresh login instead of trusting `_authed`, which is the whole
+        point — a probe that can pass on a session established earlier proves
+        nothing about the credentials on disk now. The cookie jar is cleared for
+        the same reason: a live session cookie would authorise the request even
+        after the stored password stopped being correct.
+
+        Distinct from health(): that answers "is GrayWolf up", and deliberately
+        counts a 401 as up. This answers "will our login be accepted", where a
+        401 is the failure being looked for.
+        """
+        self._authed = False
+        self._jar.clear()
+        try:
+            self._login()
+            return True
+        except GraywolfError:
+            return False
+
     def health(self):
         """Reachability probe: any HTTP response (even 401 when the API is
         auth-gated) means GrayWolf is up; only a connection error is 'down'."""

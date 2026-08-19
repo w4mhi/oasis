@@ -553,7 +553,18 @@ async function setupLoadExistingConfig() {
     if (!g || !g.exists) {
       gwState.textContent = 'GrayWolf API config not found yet (install GrayWolf first).';
     } else if (g.username_set && g.password_set) {
-      gwState.textContent = 'GrayWolf API: credentials set (password masked). APRS warning broadcast is available.';
+      // Presence is not proof. This file check cannot tell a correct password
+      // from a wrong one, and the old text claimed broadcast "is available" on
+      // the strength of two non-empty strings. Only a login settles it, so ask.
+      gwState.textContent = 'GrayWolf API: credentials set - checking the login with GrayWolf...';
+      try {
+        const p = await jget('/api/aprs/broadcast-probe');
+        gwState.textContent = (p && p.detail)
+          ? 'GrayWolf API: ' + p.detail
+          : 'GrayWolf API: credentials set, but the login could not be verified.';
+      } catch (e) {
+        gwState.textContent = 'GrayWolf API: credentials set, but the login check could not run: ' + e.message;
+      }
     } else {
       gwState.textContent = 'GrayWolf API: credentials not set - APRS warning broadcast is OFF.';
     }

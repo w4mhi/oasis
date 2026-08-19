@@ -20,6 +20,7 @@ from common.web_guard import require_oasis_request
 from services.aprs.common import warning_catalog
 from services.aprs.common.graywolf_client import GraywolfClient
 from services.aprs.common.warning_broadcast import (
+    broadcast_probe_state,
     WarningBroadcaster,
     clean_send_path,
     tactical_name,
@@ -89,6 +90,44 @@ def _get_broadcaster():
         _broadcaster_cache = WarningBroadcaster(client, symbols, send_path=send_path,
                                                  source_callsign=source_callsign)
         return _broadcaster_cache
+
+@bp.route("/api/aprs/broadcast-probe")
+def api_aprs_broadcast_probe():
+    """Do the stored GrayWolf credentials actually authenticate?
+
+    Contract §2: `ok` means the probe RAN, not that the news is good. Branch on
+    `status`, never on the HTTP code.
+
+    A FRESH client is built per call rather than reusing _get_broadcaster()'s
+    cached one: that instance may hold a session cookie from before the
+    credentials changed, which is exactly the false pass this endpoint exists to
+    prevent.
+    """
+    cfg_path = config_paths.graywolf_api_json(SUITE_ROOT)
+    base = "http://127.0.0.1:8080"
+    user = pw = ""
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        base = cfg.get("base_url") or base
+        user = (cfg.get("username") or "").strip()
+        pw = cfg.get("password") or ""
+    except (OSError, ValueError):
+        pass
+
+    configured = bool(user and pw)
+    reachable = auth_ok = None
+    if configured:
+        client = GraywolfClient(base, user, pw, timeout=3.0)
+        reachable = client.health()
+        auth_ok = client.check_auth() if reachable else False
+
+    status, detail = broadcast_probe_state(configured, reachable, auth_ok, base)
+    return jsonify({"ok": True, "status": status, "configured": configured,
+                    "reachable": reachable, "auth_ok": auth_ok,
+                    "base_url": base if configured else None,
+                    "detail": detail}), 200
+
 
 @bp.route("/api/aprs/health")
 def api_aprs_health():

@@ -253,3 +253,39 @@ class WarningBroadcaster:
                 if self._ensure_killed(fake, beac):
                     out["killed"] += 1
         return out
+
+
+# The four states the broadcast credentials can be in, and why they are four
+# rather than a boolean. Presence was already reported (health/file's
+# username_set + password_set); what was missing is that a WRONG password looks
+# byte-for-byte identical to a right one — graywolf_client swallows every
+# failure by design, and _get_broadcaster() builds a client without ever logging
+# in, so `broadcast_available` has always meant "credentials exist", not
+# "credentials work". That is the same silence that hid the 2026-08-16 redeploy
+# for two days, moved one step later.
+_BROADCAST_STATES = {
+    "unconfigured": "No GrayWolf login stored - APRS warning broadcast is OFF.",
+    "unreachable":  "Credentials stored, but GrayWolf did not answer at {base}. "
+                    "Broadcast cannot work until GrayWolf is running.",
+    "rejected":     "Credentials stored but REJECTED by GrayWolf - the username or "
+                    "password is wrong. Broadcast is OFF.",
+    "ok":           "GrayWolf login accepted - APRS warning broadcast is available.",
+}
+
+
+def broadcast_probe_state(configured, reachable, auth_ok, base=""):
+    """Pure: (status, detail) for the broadcast-credential probe.
+
+    Ordered most-fundamental-first, so the message names the thing to fix rather
+    than a downstream symptom: no credentials outranks unreachable, which
+    outranks rejected.
+    """
+    if not configured:
+        status = "unconfigured"
+    elif not reachable:
+        status = "unreachable"
+    elif not auth_ok:
+        status = "rejected"
+    else:
+        status = "ok"
+    return status, _BROADCAST_STATES[status].format(base=base or "GrayWolf")
