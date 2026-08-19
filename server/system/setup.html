@@ -553,13 +553,22 @@ async function setupLoadExistingConfig() {
       gwPw.disabled = false;
       gwBtn.style.display = 'none';
     }
+    // Colour carries the verdict, so the state reads at a glance from across a
+    // bench: GREEN only when a login has actually been accepted, AMBER for a
+    // station state that is simply not ready (no credentials, GrayWolf down,
+    // password refused), RED for a fault in the check itself. Green is never
+    // set from presence -- that was the whole bug.
+    const gwSay = (text, colour) => {
+      gwState.textContent = text;
+      gwState.style.color = colour || '';
+    };
     if (!g || !g.exists) {
-      gwState.textContent = 'GrayWolf API config not found yet (install GrayWolf first).';
+      gwSay('GrayWolf API config not found yet (install GrayWolf first).', 'var(--amber)');
     } else if (g.username_set && g.password_set) {
       // Presence is not proof. This file check cannot tell a correct password
       // from a wrong one, and the old text claimed broadcast "is available" on
       // the strength of two non-empty strings. Only a login settles it, so ask.
-      gwState.textContent = 'GrayWolf API: credentials set - checking the login with GrayWolf...';
+      gwSay('GrayWolf API: credentials set - checking the login with GrayWolf...', '');
       try {
         const p = await jget('/api/aprs/broadcast-probe');
         // jget returns the parsed body without checking the status, so an /api
@@ -568,19 +577,23 @@ async function setupLoadExistingConfig() {
         // way setupRun() does; reporting "could not be verified" over a server
         // that said NOT_FOUND throws away the one useful fact in the response.
         if (p && p.ok === false) {
-          gwState.textContent = 'GrayWolf API: login check failed - '
-            + (p.error || 'unknown error') + (p.code ? ' [' + p.code + ']' : '');
+          gwSay('GrayWolf API: login check failed - '
+            + (p.error || 'unknown error') + (p.code ? ' [' + p.code + ']' : ''), 'var(--red)');
         } else if (p && p.detail) {
-          gwState.textContent = 'GrayWolf API: ' + p.detail;
+          // Branch on `status`, never on the wording -- the message is prose and
+          // will be reworded; the status token is the contract.
+          gwSay('GrayWolf API: ' + p.detail,
+                p.status === 'ok' ? 'var(--green)' : 'var(--amber)');
         } else {
-          gwState.textContent = 'GrayWolf API: credentials set, but /api/aprs/broadcast-probe '
-            + 'returned no result - is this build current, and was Flask restarted?';
+          gwSay('GrayWolf API: credentials set, but /api/aprs/broadcast-probe '
+            + 'returned no result - is this build current, and was Flask restarted?', 'var(--red)');
         }
       } catch (e) {
-        gwState.textContent = 'GrayWolf API: credentials set, but the login check could not run: ' + e.message;
+        gwSay('GrayWolf API: credentials set, but the login check could not run: ' + e.message,
+              'var(--red)');
       }
     } else {
-      gwState.textContent = 'GrayWolf API: credentials not set - APRS warning broadcast is OFF.';
+      gwSay('GrayWolf API: credentials not set - APRS warning broadcast is OFF.', 'var(--amber)');
     }
   } catch (e) {
     document.getElementById('setupGraywolfState').textContent =
